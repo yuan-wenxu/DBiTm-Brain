@@ -1,0 +1,10 @@
+[workspace]
+authors = ["wenxu yuan <yuanwenxu123@gmail.com>"]
+channels = ["conda-forge", "bioconda"]
+name = "DBiTm-Brain"
+platforms = ["linux-64"]
+version = "0.1.0"
+
+[tasks]
+
+[dependencies]
