@@ -8,3 +8,5 @@ version = "0.1.0"
 [tasks]
 
 [dependencies]
+python = "3.12.*"
+matplotlib-base = ">=3.11.1,<4"
