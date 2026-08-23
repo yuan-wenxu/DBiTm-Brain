@@ -419,7 +419,7 @@ def plot_boxplots(
     with plt.rc_context(
         {
             "font.family": "sans-serif",
-            "font.size": 11,
+            "font.size": 10,
             "axes.edgecolor": "#666666",
             "axes.linewidth": 0.8,
             "xtick.color": "#2B2B2B",
@@ -466,6 +466,79 @@ def plot_boxplots(
         plt.close(figure)
 
 
+def plot_spot_filtering(
+    path: Path,
+    matched_sites_by_spot: list[tuple[str, int]],
+    min_total_sites: int,
+) -> None:
+    """Plot the matched-CG rank used by the spot-level coverage filter."""
+    ordered = sorted(
+        matched_sites_by_spot,
+        key=lambda item: (-item[1], item[0]),
+    )
+    ranks = list(range(1, len(ordered) + 1))
+    site_counts = [site_count for _, site_count in ordered]
+    passing = [site_count >= min_total_sites for site_count in site_counts]
+    retained_count = sum(passing)
+    filtered_count = len(ordered) - retained_count
+
+    with plt.rc_context(
+        {
+            "font.family": "sans-serif",
+            "font.size": 10,
+            "axes.edgecolor": "#666666",
+            "axes.linewidth": 0.8,
+            "xtick.color": "#2B2B2B",
+            "ytick.color": "#2B2B2B",
+        }
+    ):
+        figure, axis = plt.subplots(figsize=(5, 4))
+
+        retained_ranks = [rank for rank, keep in zip(ranks, passing) if keep]
+        retained_sites = [
+            site_count for site_count, keep in zip(site_counts, passing) if keep
+        ]
+        filtered_ranks = [rank for rank, keep in zip(ranks, passing) if not keep]
+        filtered_sites = [
+            site_count for site_count, keep in zip(site_counts, passing) if not keep
+        ]
+        if retained_ranks:
+            axis.scatter(
+                retained_ranks,
+                retained_sites,
+                color=BOX_COLOR,
+                s=10,
+                label=f"Retained (n={retained_count:,})",
+            )
+        if filtered_ranks:
+            axis.scatter(
+                filtered_ranks,
+                filtered_sites,
+                color="#8C8C8C",
+                s=10,
+                label=f"Filtered (n={filtered_count:,})",
+            )
+        axis.axhline(
+            min_total_sites,
+            color="#D73027",
+            linestyle="--",
+            linewidth=1.2,
+            label=f"Threshold = {min_total_sites:,}",
+        )
+        axis.set_yscale("symlog", linthresh=1)
+        axis.set_ylim(bottom=0)
+        axis.set_title("Spot filtering by matched CG coverage", fontsize=12, pad=8)
+        axis.set_xlabel("Spot rank (highest coverage first)", fontsize=10)
+        axis.set_ylabel("Matched CG sites", fontsize=10)
+        axis.set_xlim(0.5, len(ordered) + 0.5)
+        axis.grid(axis="both", color="#D9D9D9", linewidth=0.8, alpha=0.8)
+        axis.set_axisbelow(True)
+        axis.legend(frameon=False, fontsize=9)
+        figure.tight_layout()
+        figure.savefig(path, dpi=300, bbox_inches="tight")
+        plt.close(figure)
+
+
 def main() -> None:
     args = parse_args()
     host_dir = args.host_dir.expanduser().resolve()
@@ -499,6 +572,7 @@ def main() -> None:
     spots_retained = 0
     matched_sites_total = 0
     unmatched_sites_total = 0
+    matched_sites_by_spot: list[tuple[str, int]] = []
     for path in paths:
         try:
             stats_by_state, matched_sites, unmatched_sites = process_coverage_file(
@@ -509,8 +583,9 @@ def main() -> None:
         files_processed += 1
         matched_sites_total += matched_sites
         unmatched_sites_total += unmatched_sites
+        spot = sample_name(path)
+        matched_sites_by_spot.append((spot, matched_sites))
         if matched_sites >= args.min_total_sites:
-            spot = sample_name(path)
             for state, stats in stats_by_state.items():
                 detail_rows.append(
                     {
@@ -537,6 +612,7 @@ def main() -> None:
     detail_path = output_dir / "chromhmm_methylation_by_spot.tsv.gz"
     summary_path = output_dir / "chromhmm_methylation_summary.tsv"
     figure_path = output_dir / "chromhmm_methylation_boxplots.png"
+    filter_figure_path = output_dir / "spot_filtering_rank.png"
     definition_path = output_dir / "chromhmm_state_definitions.tsv"
 
     write_detail(detail_path, detail_rows)
@@ -553,6 +629,11 @@ def main() -> None:
         ],
     )
     plot_boxplots(figure_path, detail_rows, args.min_sites)
+    plot_spot_filtering(
+        filter_figure_path,
+        matched_sites_by_spot,
+        args.min_total_sites,
+    )
 
     print("Context: CG")
     print(f"Coverage files: {files_processed:,}")
@@ -560,6 +641,7 @@ def main() -> None:
     print(f"Matched CG sites: {matched_sites_total:,}")
     print(f"Unmatched CG sites: {unmatched_sites_total:,}")
     print(f"Figure: {figure_path}")
+    print(f"Filter figure: {filter_figure_path}")
     print(f"Summary: {summary_path}")
     print(f"Per-spot table: {detail_path}")
     print(f"Definitions: {definition_path}")
