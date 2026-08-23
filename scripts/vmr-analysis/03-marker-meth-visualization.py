@@ -135,14 +135,16 @@ def plot_vmr_heatmap(
     x = data["X_index"].to_numpy()
     y = data["Y_index"].to_numpy()
 
-    grid = np.full((chip_size, chip_size), np.nan)
+    # Undetected spots are reported as 0 (low methylation) so the full chip
+    # is colored; measured values overwrite the default.
+    grid = np.zeros((chip_size, chip_size), dtype=float)
     values = data[vmr].to_numpy(dtype=float)
     for xi, yi, value in zip(x, y, values):
         if not np.isnan(value):
             grid[int(yi), int(xi)] = value
     image = axis.imshow(
         grid,
-        cmap="Reds",
+        cmap="coolwarm",
         vmin=0,
         vmax=1,
         origin="lower",
