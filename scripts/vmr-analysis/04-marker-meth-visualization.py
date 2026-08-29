@@ -25,12 +25,14 @@ def parse_args() -> argparse.Namespace:
                         help="VMR-to-gene table from 02-link-vmr-genes.py.")
     parser.add_argument("--gene-file", type=Path, required=True,
                         help="Headerless, one-column TSV containing marker gene names.")
-    parser.add_argument("--chip-size", type=int, choices=(50, 100), required=True,
-                        help="Number of grid cells along each chip axis: 50 or 100.")
+    parser.add_argument("--chip-size", type=int, required=True,
+                        help="Number of grid cells along each chip axis.")
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument("--row-suffix", default=".CG",
                         help="Suffix stripped from matrix row ids to match spot ids.")
     args = parser.parse_args()
+    if args.chip_size < 1:
+        parser.error("--chip-size must be a positive integer")
     return args
 
 

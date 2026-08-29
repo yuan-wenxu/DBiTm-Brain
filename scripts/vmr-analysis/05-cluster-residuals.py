@@ -43,7 +43,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--chip-size",
         type=int,
-        choices=(50, 100),
         required=True,
         help="Number of zero-based grid positions along each chip axis.",
     )
@@ -102,6 +101,8 @@ def parse_args() -> argparse.Namespace:
     )
     args = parser.parse_args()
 
+    if args.chip_size < 1:
+        parser.error("--chip-size must be a positive integer")
     if args.n_components < 2:
         parser.error("--n-components must be at least 2")
     if args.max_iterations < 1:
