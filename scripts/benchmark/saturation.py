@@ -276,8 +276,10 @@ def write_plot(
     marker_step_gbp: float,
 ) -> None:
     sample_names = list(dict.fromkeys(curves["sample"]))
-    colors = plt.get_cmap("tab10").colors
-    figure, axis = plt.subplots(figsize=(5, 4))
+    tab20 = plt.get_cmap("tab20").colors
+    colors = tab20[::2] + tab20[1::2]
+    figure_width = 7.0 if len(sample_names) > 7 else 5.0
+    figure, axis = plt.subplots(figsize=(figure_width, 4.5))
     for index, sample in enumerate(sample_names):
         data = curves.loc[curves["sample"] == sample].sort_values("target_gbp")
         color = colors[index % len(colors)]
@@ -311,15 +313,16 @@ def write_plot(
     axis.grid(True, alpha=0.25)
     axis.legend(
         title="Sample",
-        loc="upper left",
+        loc="center left" if len(sample_names) > 7 else "upper left",
+        bbox_to_anchor=(1.01, 0.5) if len(sample_names) > 7 else None,
         frameon=True,
-        fontsize=6,
+        fontsize=7,
         title_fontsize=8,
         labelspacing=0.35,
         borderpad=0.4,
         handlelength=2.2,
     )
-    figure.tight_layout(rect=(0, 0.025, 1, 1))
+    figure.tight_layout()
     save_figure_atomic(
         figure, output_dir / "combined_saturation_curve_5gb.png", "png"
     )
