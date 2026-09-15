@@ -18,14 +18,27 @@ import pandas as pd
 
 
 PLOT_TITLE = "CpG saturation curves"
-# Nature Publishing Group-inspired hues. Each tuple forms one source-directory
-# family so related samples remain visually grouped while retaining contrast.
-GROUP_COLOR_FAMILIES = (
-    ("#3C5488", "#4DBBD5", "#8491B4", "#A6BDD7"),
-    ("#A73030", "#E64B35", "#F39B7F", "#D9A28F"),
-    ("#006D5B", "#00A087", "#45B8A5", "#91D1C2"),
-    ("#5F4B3B", "#7E6148", "#B09C85", "#D4C2AA"),
-)
+# Reserve colors by directory name so placeholders keep the same colors when
+# their analysis outputs become available and are added to a later plot.
+SAMPLE_COLORS = {
+    "p35-taps-50μm": "#A73030",
+    "p35-taps-beta-50μm": "#E64B35",
+    "SRR29496780-20μm": "#2F5597",
+    "SRR29496782-50μm": "#3C5488",
+    "SRR29496784-50μm": "#4DBBD5",
+    "SRR32867346-10μm": "#70B7D2",
+    "SRR32867348-50μm": "#9DCBE1",
+    "CRR1678209-20μm": "#5F4B3B",
+    "CRR1678210-20μm": "#7E6148",
+    "CRR1678211-20μm": "#B09C85",
+    "CRR1678212-10μm": "#4D4D4D",
+    "CRR1678213-10μm": "#666666",
+    "CRR1678214-10μm": "#7F7F7F",
+    "CRR1678215-10μm": "#929292",
+    "CRR1678217-10μm": "#A5A5A5",
+    "CRR1678218-10μm": "#B8B8B8",
+    "CRR1698248-10μm": "#8C8178",
+}
 CURVE_FIELDS = [
     "sample",
     "target_gbp",
@@ -36,17 +49,6 @@ CURVE_FIELDS = [
     "hq_spot_count",
     "reads_threshold",
     "source_clean_gbp",
-    "sequencing_gbp_source",
-]
-METADATA_FIELDS = [
-    "sample",
-    "source_clean_gbp",
-    "maximum_plotted_gbp",
-    "sampling_step_gbp",
-    "marker_step_gbp",
-    "sampling_point_count",
-    "reads_threshold",
-    "hq_spot_count",
 ]
 
 
@@ -70,7 +72,7 @@ def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
         "--output-dir",
         required=True,
         type=Path,
-        help="Directory for the combined PNG, PDF, curve TSV, and metadata TSV.",
+        help="Directory for the combined PNG, and curve TSV.",
     )
     parser.add_argument(
         "--sampling-step-gbp",
@@ -128,7 +130,6 @@ def discover_samples(sample_dirs: list[Path]) -> list[dict[str, Path | str]]:
         samples.append(
             {
                 "sample": sample_name,
-                "group": sample_dir.parent.name,
                 "histogram": histogram_path,
                 "fastp": fastp_path,
                 "threshold": threshold_path,
@@ -244,7 +245,6 @@ def calculate_sample_curve(
                 "hq_spot_count": hq_spot_count,
                 "reads_threshold": reads_threshold,
                 "source_clean_gbp": source_clean_gbp,
-                "sequencing_gbp_source": "fastp.after_filtering.total_bases",
             }
         )
     return pd.DataFrame(rows, columns=CURVE_FIELDS), hq_spot_count
@@ -281,27 +281,20 @@ def write_plot(
     curves: pd.DataFrame,
     output_dir: Path,
     title: str,
-    sampling_step_gbp: float,
     marker_step_gbp: float,
-    sample_groups: dict[str, str],
 ) -> None:
     sample_names = list(dict.fromkeys(curves["sample"]))
-    group_names = list(dict.fromkeys(sample_groups[sample] for sample in sample_names))
-    group_indices = {group: 0 for group in group_names}
-    sample_colors: dict[str, str] = {}
-    for sample in sample_names:
-        group = sample_groups[sample]
-        family = GROUP_COLOR_FAMILIES[
-            group_names.index(group) % len(GROUP_COLOR_FAMILIES)
-        ]
-        sample_colors[sample] = family[group_indices[group] % len(family)]
-        group_indices[group] += 1
+    missing_colors = [sample for sample in sample_names if sample not in SAMPLE_COLORS]
+    if missing_colors:
+        raise ValueError(
+            "SAMPLE_COLORS lacks entries for: " + ", ".join(missing_colors)
+        )
 
-    figure_width = 7.0 if len(sample_names) > 7 else 5.0
-    figure, axis = plt.subplots(figsize=(figure_width, 4.5))
+    figure_width = 8
+    figure, axis = plt.subplots(figsize=(figure_width, 5))
     for sample in sample_names:
         data = curves.loc[curves["sample"] == sample].sort_values("target_gbp")
-        color = sample_colors[sample]
+        color = SAMPLE_COLORS[sample]
         axis.plot(
             data["target_gbp"],
             data["median_unique_cpgs"] / 1e4,
@@ -324,7 +317,7 @@ def write_plot(
             zorder=3,
         )
 
-    axis.set_title(f"{title} ({sampling_step_gbp:g}-Gbp increments)", fontsize=12)
+    axis.set_title(f"{title}", fontsize=12)
     axis.set_xlabel("Sequencing depth (Gbp)", fontsize=10)
     axis.set_ylabel("Median unique CpGs per HQ spot (×10⁴)", fontsize=10)
     axis.set_xlim(left=0)
@@ -332,10 +325,10 @@ def write_plot(
     axis.grid(True, alpha=0.25)
     axis.legend(
         title="Sample",
-        loc="center left" if len(sample_names) > 7 else "upper left",
+        loc="center left",
         bbox_to_anchor=(1.01, 0.5) if len(sample_names) > 7 else None,
         frameon=True,
-        fontsize=7,
+        fontsize=8,
         title_fontsize=8,
         labelspacing=0.35,
         borderpad=0.4,
@@ -343,7 +336,7 @@ def write_plot(
     )
     figure.tight_layout()
     save_figure_atomic(
-        figure, output_dir / "combined_saturation_curve_5gb.png", "png"
+        figure, output_dir / "combined_saturation_curve.png", "png"
     )
     plt.close(figure)
 
@@ -353,11 +346,7 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         validate_args(args)
         samples = discover_samples(args.sample_dirs)
-        sample_groups = {
-            str(paths["sample"]): str(paths["group"]) for paths in samples
-        }
         curve_frames: list[pd.DataFrame] = []
-        metadata_rows: list[dict[str, float | int | str]] = []
         for paths in samples:
             sample = str(paths["sample"])
             histogram_path = Path(paths["histogram"])
@@ -371,42 +360,23 @@ def main(argv: Optional[list[str]] = None) -> int:
                 args.sampling_step_gbp,
             )
             curve_frames.append(curve)
-            metadata_rows.append(
-                {
-                    "sample": sample,
-                    "source_clean_gbp": source_clean_gbp,
-                    "maximum_plotted_gbp": float(curve["target_gbp"].iloc[-1]),
-                    "sampling_step_gbp": args.sampling_step_gbp,
-                    "marker_step_gbp": args.marker_step_gbp,
-                    "sampling_point_count": len(curve),
-                    "reads_threshold": reads_threshold,
-                    "hq_spot_count": hq_spot_count,
-                }
-            )
             print(
                 f"sample={sample} clean-gbp={source_clean_gbp:.9f} "
                 f"points={len(curve)} hq-spots={hq_spot_count}"
             )
 
         curves = pd.concat(curve_frames, ignore_index=True)
-        metadata = pd.DataFrame(metadata_rows, columns=METADATA_FIELDS)
         args.output_dir.mkdir(parents=True, exist_ok=True)
         atomic_write_table(
             curves,
-            args.output_dir / "combined_saturation_5gb.tsv.gz",
+            args.output_dir / "combined_saturation.tsv.gz",
             compression="gzip",
-        )
-        atomic_write_table(
-            metadata,
-            args.output_dir / "combined_saturation_5gb_metadata.tsv",
         )
         write_plot(
             curves,
             args.output_dir,
             PLOT_TITLE,
-            args.sampling_step_gbp,
             args.marker_step_gbp,
-            sample_groups,
         )
         print(f"[saturation] output-dir={args.output_dir}")
         return 0
