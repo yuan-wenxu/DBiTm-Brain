@@ -18,6 +18,14 @@ import pandas as pd
 
 
 PLOT_TITLE = "CpG saturation curves"
+# Nature Publishing Group-inspired hues. Each tuple forms one source-directory
+# family so related samples remain visually grouped while retaining contrast.
+GROUP_COLOR_FAMILIES = (
+    ("#3C5488", "#4DBBD5", "#8491B4", "#A6BDD7"),
+    ("#A73030", "#E64B35", "#F39B7F", "#D9A28F"),
+    ("#006D5B", "#00A087", "#45B8A5", "#91D1C2"),
+    ("#5F4B3B", "#7E6148", "#B09C85", "#D4C2AA"),
+)
 CURVE_FIELDS = [
     "sample",
     "target_gbp",
@@ -120,6 +128,7 @@ def discover_samples(sample_dirs: list[Path]) -> list[dict[str, Path | str]]:
         samples.append(
             {
                 "sample": sample_name,
+                "group": sample_dir.parent.name,
                 "histogram": histogram_path,
                 "fastp": fastp_path,
                 "threshold": threshold_path,
@@ -274,15 +283,25 @@ def write_plot(
     title: str,
     sampling_step_gbp: float,
     marker_step_gbp: float,
+    sample_groups: dict[str, str],
 ) -> None:
     sample_names = list(dict.fromkeys(curves["sample"]))
-    tab20 = plt.get_cmap("tab20").colors
-    colors = tab20[::2] + tab20[1::2]
+    group_names = list(dict.fromkeys(sample_groups[sample] for sample in sample_names))
+    group_indices = {group: 0 for group in group_names}
+    sample_colors: dict[str, str] = {}
+    for sample in sample_names:
+        group = sample_groups[sample]
+        family = GROUP_COLOR_FAMILIES[
+            group_names.index(group) % len(GROUP_COLOR_FAMILIES)
+        ]
+        sample_colors[sample] = family[group_indices[group] % len(family)]
+        group_indices[group] += 1
+
     figure_width = 7.0 if len(sample_names) > 7 else 5.0
     figure, axis = plt.subplots(figsize=(figure_width, 4.5))
-    for index, sample in enumerate(sample_names):
+    for sample in sample_names:
         data = curves.loc[curves["sample"] == sample].sort_values("target_gbp")
-        color = colors[index % len(colors)]
+        color = sample_colors[sample]
         axis.plot(
             data["target_gbp"],
             data["median_unique_cpgs"] / 1e4,
@@ -334,6 +353,9 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         validate_args(args)
         samples = discover_samples(args.sample_dirs)
+        sample_groups = {
+            str(paths["sample"]): str(paths["group"]) for paths in samples
+        }
         curve_frames: list[pd.DataFrame] = []
         metadata_rows: list[dict[str, float | int | str]] = []
         for paths in samples:
@@ -384,6 +406,7 @@ def main(argv: Optional[list[str]] = None) -> int:
             PLOT_TITLE,
             args.sampling_step_gbp,
             args.marker_step_gbp,
+            sample_groups,
         )
         print(f"[saturation] output-dir={args.output_dir}")
         return 0
