@@ -377,6 +377,7 @@ def write_detail(path: Path, rows: Iterable[dict[str, object]]) -> None:
         "state",
         "site_count",
         "methylation_rate",
+        "matched_total_sites",
     ]
     with gzip.open(path, mode="wt", encoding="utf-8", newline="") as handle:
         writer = csv.DictWriter(
@@ -384,6 +385,32 @@ def write_detail(path: Path, rows: Iterable[dict[str, object]]) -> None:
         )
         writer.writeheader()
         writer.writerows(rows)
+
+
+def read_detail(path: Path) -> list[dict[str, object]] | None:
+    """Read the detail table when it has the reusable-cache column."""
+    if not path.is_file():
+        return None
+    with gzip.open(path, mode="rt", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle, delimiter="\t")
+        if reader.fieldnames is None or "matched_total_sites" not in reader.fieldnames:
+            return None
+        return list(reader)
+
+
+def collect_matched_sites(
+    detail_rows: Iterable[dict[str, object]], sample_order: list[str]
+) -> dict[str, list[tuple[str, int]]]:
+    """Recover one matched-site count per sample and spot from detail rows."""
+    totals: dict[str, dict[str, int]] = {sample: {} for sample in sample_order}
+    for row in detail_rows:
+        sample = str(row["sample"])
+        spot = str(row["spot"])
+        totals[sample][spot] = int(row["matched_total_sites"])
+    return {
+        sample: sorted(sample_totals.items())
+        for sample, sample_totals in totals.items()
+    }
 
 
 def write_tsv(path: Path, rows: list[dict[str, object]]) -> None:
@@ -556,6 +583,7 @@ def main() -> None:
     chromhmm_cm = args.chromhmm_cm.expanduser().resolve()
     cpg_reference = args.cpg_reference.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
+    detail_path = output_dir / "chromhmm_methylation_by_spot.tsv.gz"
     for path, description in (
         (chromhmm_cm, "ChromHMM mask"),
         (cpg_reference, "CpG reference"),
@@ -577,75 +605,97 @@ def main() -> None:
     if missing_colors:
         raise SystemExit("SAMPLE_COLORS lacks entries for: " + ", ".join(missing_colors))
 
-    try:
-        chromhmm_index = read_chromhmm_index(chromhmm_cm, cpg_reference)
-    except (OSError, EOFError, UnicodeError, ValueError, struct.error) as error:
-        raise SystemExit(str(error)) from error
-    print(
-        f"Loaded {len(chromhmm_index.state_codes):,} mm10 CpGs "
-        f"and {len(chromhmm_index.labels)} ChromHMM labels",
-        flush=True,
-    )
+    detail_rows = read_detail(detail_path)
 
-    detail_rows: list[dict[str, object]] = []
-    files_processed = 0
-    matched_sites_by_sample: dict[str, list[tuple[str, int]]] = {
-        sample: [] for sample in sample_order
-    }
-    for sample, coverage_path in sample_inputs:
+    if detail_rows is None:
         try:
-            (
-                stats_by_spot,
-                sample_matched_by_spot,
-            ) = process_coverage_file(coverage_path, chromhmm_index)
-        except (OSError, UnicodeError, ValueError) as error:
+            chromhmm_index = read_chromhmm_index(chromhmm_cm, cpg_reference)
+        except (OSError, EOFError, UnicodeError, ValueError, struct.error) as error:
             raise SystemExit(str(error)) from error
-        files_processed += 1
-
-        for spot in sorted(sample_matched_by_spot):
-            matched_sites = sample_matched_by_spot[spot]
-            matched_sites_by_sample[sample].append((spot, matched_sites))
-            if matched_sites < args.min_total_sites:
-                continue
-            for state in chromhmm_index.labels:
-                stats = stats_by_spot.get(spot, {}).get(state)
-                if stats is None:
-                    continue
-                detail_rows.append(
-                    {
-                        "sample": sample,
-                        "spot": spot,
-                        "context": "CG",
-                        "state": state,
-                        "site_count": stats.sites,
-                        "methylation_rate": stats.rate,
-                    }
-                )
-
         print(
-            f"Sample={sample} spots={len(sample_matched_by_spot):,} ",
+            f"Loaded {len(chromhmm_index.state_codes):,} mm10 CpGs "
+            f"and {len(chromhmm_index.labels)} ChromHMM labels",
             flush=True,
         )
 
-    if not detail_rows:
+        detail_rows = []
+        for sample, coverage_path in sample_inputs:
+            try:
+                (
+                    stats_by_spot,
+                    sample_matched_by_spot,
+                ) = process_coverage_file(coverage_path, chromhmm_index)
+            except (OSError, UnicodeError, ValueError) as error:
+                raise SystemExit(str(error)) from error
+
+            for spot in sorted(sample_matched_by_spot):
+                matched_sites = sample_matched_by_spot[spot]
+                spot_states = stats_by_spot.get(spot, {})
+                if not spot_states:
+                    detail_rows.append(
+                        {
+                            "sample": sample,
+                            "spot": spot,
+                            "context": "CG",
+                            "state": "",
+                            "site_count": 0,
+                            "methylation_rate": "",
+                            "matched_total_sites": matched_sites,
+                        }
+                    )
+                    continue
+                for state in chromhmm_index.labels:
+                    stats = spot_states.get(state)
+                    if stats is None:
+                        continue
+                    detail_rows.append(
+                        {
+                            "sample": sample,
+                            "spot": spot,
+                            "context": "CG",
+                            "state": state,
+                            "site_count": stats.sites,
+                            "methylation_rate": stats.rate,
+                            "matched_total_sites": matched_sites,
+                        }
+                    )
+
+            print(
+                f"Sample={sample} spots={len(sample_matched_by_spot):,} scanned",
+                flush=True,
+            )
+
+        output_dir.mkdir(parents=True, exist_ok=True)
+        write_detail(detail_path, detail_rows)
+        print(f"Detail cache written: {detail_path}", flush=True)
+    else:
+        print(f"Reusing detail cache: {detail_path}", flush=True)
+
+    matched_sites_by_sample = collect_matched_sites(detail_rows, sample_order)
+    filtered_detail_rows = [
+        row
+        for row in detail_rows
+        if str(row["state"])
+        and int(row["matched_total_sites"]) >= args.min_total_sites
+    ]
+    if not filtered_detail_rows:
         raise SystemExit("No spots passed --min-total-sites")
 
+    observed_states = {str(row["state"]) for row in detail_rows if row["state"]}
     extra_states = [
-        state for state in chromhmm_index.labels if state not in PLOT_STATE_ORDER
+        state for state in sorted(observed_states) if state not in PLOT_STATE_ORDER
     ]
     summary_order = list(PLOT_STATE_ORDER) + extra_states
     summary_rows = summarize_rows(
-        detail_rows, args.min_sites, sample_order, summary_order
+        filtered_detail_rows, args.min_sites, sample_order, summary_order
     )
     output_dir.mkdir(parents=True, exist_ok=True)
-    detail_path = output_dir / "chromhmm_methylation_by_spot.tsv.gz"
     summary_path = output_dir / "chromhmm_methylation_summary.tsv"
     figure_path = output_dir / "chromhmm_methylation_boxplots.png"
     filter_figure_path = output_dir / "spot_filtering_rank.png"
 
-    write_detail(detail_path, detail_rows)
     write_tsv(summary_path, summary_rows)
-    plot_boxplots(figure_path, detail_rows, args.min_sites, sample_order)
+    plot_boxplots(figure_path, filtered_detail_rows, args.min_sites, sample_order)
     plot_spot_filtering(
         filter_figure_path,
         matched_sites_by_sample,
@@ -654,7 +704,7 @@ def main() -> None:
     )
 
     print("Context: CG")
-    print(f"Coverage files: {files_processed:,}")
+    print(f"Coverage files: {len(sample_inputs):,}")
     print(f"Figure: {figure_path}")
     print(f"Filter figure: {filter_figure_path}")
     print(f"Summary: {summary_path}")
