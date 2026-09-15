@@ -124,14 +124,17 @@ def parse_args() -> argparse.Namespace:
         default=1000,
         help=(
             "Minimum matched CpGs for a spot-state value in the plot and summary "
-            "(default: 10)."
+            "(default: %(default)s)."
         ),
     )
     parser.add_argument(
         "--min-total-sites",
         type=int,
         default=10000,
-        help="Minimum matched CG sites required to retain a spot (default: 100).",
+        help=(
+            "Minimum matched CG sites required to retain a spot "
+            "(default: %(default)s)."
+        ),
     )
     args = parser.parse_args()
     if args.min_sites < 1:
