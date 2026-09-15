@@ -21,8 +21,8 @@ PLOT_TITLE = "CpG saturation curves"
 # Reserve colors by directory name so placeholders keep the same colors when
 # their analysis outputs become available and are added to a later plot.
 SAMPLE_COLORS = {
-    "p35-taps-50μm": "#A73030",
-    "p35-taps-beta-50μm": "#E64B35",
+    "P35-TAPS-50μm": "#A73030",
+    "P35-TAPS-beta-50μm": "#E64B35",
     "SRR29496780-20μm": "#2F5597",
     "SRR29496782-50μm": "#3C5488",
     "SRR29496784-50μm": "#4DBBD5",

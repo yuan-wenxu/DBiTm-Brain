@@ -8,7 +8,6 @@ import bisect
 import csv
 import gzip
 import math
-import statistics
 import struct
 from array import array
 from collections import defaultdict
@@ -20,6 +19,7 @@ import matplotlib
 
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
+from matplotlib.patches import Patch
 
 
 YAME_SIGNATURE = 266563789635
@@ -42,28 +42,16 @@ PLOT_STATE_ORDER = (
     "Tx",
     "TxWk",
 )
-STATE_DESCRIPTIONS = {
-    "Enh": "Active enhancer",
-    "EnhG": "Genic enhancer",
-    "EnhLo": "Low-signal enhancer",
-    "EnhPois": "Poised enhancer",
-    "EnhPr": "Primed enhancer",
-    "Het": "Constitutive heterochromatin",
-    "Quies": "Quiescent or low-signal chromatin",
-    "Quies2": "Quiescent substate; retained in tables but omitted from the reference figure",
-    "Quies3": "Quiescent substate",
-    "Quies4": "Quiescent substate",
-    "QuiesG": "Genic quiescent state",
-    "ReprPC": "Polycomb-repressed state",
-    "ReprPCWk": "Weak Polycomb-repressed state",
-    "Tss": "Active transcription start site",
-    "TssBiv": "Bivalent transcription start site",
-    "TssFlnk": "Transcription-start-site flanking state",
-    "Tx": "Strong transcription",
-    "TxWk": "Weak transcription",
-    "NA": "No ChromHMM state",
+# Keep these sample colors aligned with scripts/benchmark/saturation.py.
+SAMPLE_COLORS = {
+    "P35-TAPS-50μm": "#A73030",
+    "P35-TAPS-beta-50μm": "#E64B35",
+    "SRR29496780-20μm": "#2F5597",
+    "SRR29496782-50μm": "#3C5488",
+    "SRR29496784-50μm": "#4DBBD5",
+    "SRR32867346-10μm": "#70B7D2",
+    "SRR32867348-50μm": "#9DCBE1",
 }
-BOX_COLOR = "#56B4E9"
 
 
 @dataclass(frozen=True)
@@ -104,15 +92,18 @@ class SiteStats:
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Aggregate per-spot CG coverage over mm10 ChromHMM states and draw a "
-            "boxplot matching Extended Data Fig. 4b of Deng et al."
+            "Aggregate one or more samples of per-spot CG coverage over mm10 "
+            "ChromHMM states and draw a combined boxplot."
         )
     )
     parser.add_argument(
-        "--host-dir",
+        "sample_dirs",
         type=Path,
-        required=True,
-        help="Directory recursively containing <spot>.CG.cov files.",
+        nargs="+",
+        help=(
+            "Sample result directories that each contain "
+            "dbitm/coverage/host/host.CG.cov."
+        ),
     )
     parser.add_argument(
         "--chromhmm-cm",
@@ -131,7 +122,10 @@ def parse_args() -> argparse.Namespace:
         "--min-sites",
         type=int,
         default=10,
-        help="Minimum matched CpGs for a spot-state value in the plot (default: 10).",
+        help=(
+            "Minimum matched CpGs for a spot-state value in the plot and summary "
+            "(default: 10)."
+        ),
     )
     parser.add_argument(
         "--min-total-sites",
@@ -286,101 +280,98 @@ def read_chromhmm_index(cm_path: Path, cpg_path: Path) -> ChromHMMIndex:
     return ChromHMMIndex(positions, row_offsets, state_codes, labels)
 
 
-def sample_name(path: Path) -> str:
-    suffix = ".CG.cov"
-    if not path.name.endswith(suffix):
-        raise ValueError(f"Unexpected CG coverage filename: {path.name}")
-    return path.name[: -len(suffix)]
+def resolve_sample_input(input_dir: Path) -> tuple[str, Path]:
+    """Resolve a sample root and its fixed DBiTM host-CG coverage path."""
+    sample_dir = input_dir.expanduser().resolve()
+    if not sample_dir.is_dir():
+        raise ValueError(f"Sample directory does not exist: {sample_dir}")
 
-
-def discover_files(host_dir: Path) -> list[Path]:
-    paths = sorted(host_dir.rglob("*.CG.cov"))
-    return paths
+    coverage_path = sample_dir / "dbitm" / "coverage" / "host" / "host.CG.cov"
+    if not coverage_path.is_file():
+        raise ValueError(f"Host CG coverage file does not exist: {coverage_path}")
+    return sample_dir.name, coverage_path
 
 
 def process_coverage_file(
     path: Path, chromhmm_index: ChromHMMIndex
-) -> tuple[dict[str, SiteStats], int, int]:
-    stats_by_state: dict[str, SiteStats] = defaultdict(SiteStats)
-    matched_sites = 0
-    unmatched_sites = 0
+) -> tuple[
+    dict[str, dict[str, SiteStats]],
+    dict[str, int],
+]:
+    """Aggregate coverage rows by the spot name stored in column seven."""
+    stats_by_spot: dict[str, dict[str, SiteStats]] = {}
+    matched_sites_by_spot: dict[str, int] = defaultdict(int)
     with open_text(path) as handle:
         for line_number, line in enumerate(handle, start=1):
             if not line.strip():
                 continue
-            fields = line.rstrip("\n").split("\t")
-            if len(fields) < 4:
+            fields = line.rstrip("\r\n").split("\t")
+            if len(fields) < 7:
                 raise ValueError(
-                    f"Expected at least 4 coverage columns at {path}:{line_number}"
+                    f"Expected at least 7 coverage columns at {path}:{line_number}"
                 )
             chrom = fields[0]
             cpg_start = int(fields[1])
             methylation_percent = float(fields[3])
+            spot = fields[6]
             if (
                 cpg_start < 0
                 or not math.isfinite(methylation_percent)
                 or not 0 <= methylation_percent <= 100
+                or not spot
             ):
                 raise ValueError(f"Invalid coverage values at {path}:{line_number}")
+
+            matched_sites_by_spot[spot] += 0
             state = chromhmm_index.label_at(chrom, cpg_start)
             if state is None:
-                unmatched_sites += 1
                 continue
-            stats_by_state[state].add(methylation_percent / 100)
-            matched_sites += 1
-    return stats_by_state, matched_sites, unmatched_sites
-
-
-def percentile(values: list[float], probability: float) -> float:
-    ordered = sorted(values)
-    position = probability * (len(ordered) - 1)
-    lower = math.floor(position)
-    upper = math.ceil(position)
-    if lower == upper:
-        return ordered[lower]
-    fraction = position - lower
-    return ordered[lower] + fraction * (ordered[upper] - ordered[lower])
+            spot_stats = stats_by_spot.setdefault(spot, {})
+            spot_stats.setdefault(state, SiteStats()).add(methylation_percent / 100)
+            matched_sites_by_spot[spot] += 1
+    return stats_by_spot, dict(matched_sites_by_spot)
 
 
 def summarize_rows(
-    detail_rows: list[dict[str, object]], min_sites: int, state_order: list[str]
+    detail_rows: list[dict[str, object]],
+    min_sites: int,
+    sample_order: list[str],
+    state_order: list[str],
 ) -> list[dict[str, object]]:
-    grouped: dict[str, list[dict[str, object]]] = defaultdict(list)
+    grouped: dict[tuple[str, str], list[dict[str, object]]] = defaultdict(list)
     for row in detail_rows:
-        grouped[str(row["state"])].append(row)
+        grouped[(str(row["sample"]), str(row["state"]))].append(row)
 
     summary: list[dict[str, object]] = []
-    for state in state_order:
-        rows = grouped.get(state, [])
-        passing = [row for row in rows if int(row["site_count"]) >= min_sites]
-        values = [float(row["methylation_rate"]) for row in passing]
-        site_count = sum(int(row["site_count"]) for row in rows)
-        site_methylation_sum = sum(
-            float(row["methylation_rate"]) * int(row["site_count"])
-            for row in rows
-        )
-        summary.append(
-            {
-                "context": "CG",
-                "state": state,
-                "plotted_in_reference_order": state in PLOT_STATE_ORDER,
-                "spots_observed": len(rows),
-                "spots_passing_min_sites": len(passing),
-                "spot_site_observations": site_count,
-                "pooled_methylation_rate": (
-                    site_methylation_sum / site_count if site_count else ""
-                ),
-                "spot_mean": statistics.fmean(values) if values else "",
-                "spot_q1": percentile(values, 0.25) if values else "",
-                "spot_median": statistics.median(values) if values else "",
-                "spot_q3": percentile(values, 0.75) if values else "",
-            }
-        )
+    for sample in sample_order:
+        for state in state_order:
+            rows = grouped.get((sample, state), [])
+            passing = [row for row in rows if int(row["site_count"]) >= min_sites]
+            site_count = sum(int(row["site_count"]) for row in passing)
+            site_methylation_sum = sum(
+                float(row["methylation_rate"]) * int(row["site_count"])
+                for row in passing
+            )
+            summary.append(
+                {
+                    "sample": sample,
+                    "context": "CG",
+                    "state": state,
+                    "plotted": state in PLOT_STATE_ORDER,
+                    "total_spots": len(rows),
+                    "spots_passing_filter": len(passing),
+                    "total_sites": site_count,
+                    "pooled_methylation_rate": (
+                        site_methylation_sum / site_count if site_count else ""
+                    ),
+                }
+            )
     return summary
 
 
 def write_detail(path: Path, rows: Iterable[dict[str, object]]) -> None:
     fields = [
+        "sample",
         "spot",
         "context",
         "state",
@@ -410,11 +401,20 @@ def plot_boxplots(
     path: Path,
     detail_rows: list[dict[str, object]],
     min_sites: int,
+    sample_order: list[str],
 ) -> None:
-    values: dict[str, list[float]] = defaultdict(list)
+    values: dict[tuple[str, str], list[float]] = defaultdict(list)
     for row in detail_rows:
         if int(row["site_count"]) >= min_sites:
-            values[str(row["state"])].append(float(row["methylation_rate"]))
+            values[(str(row["sample"]), str(row["state"]))].append(
+                float(row["methylation_rate"])
+            )
+
+    box_width = min(0.72 / len(sample_order), 0.48)
+    offsets = [
+        (index - (len(sample_order) - 1) / 2) * box_width
+        for index in range(len(sample_order))
+    ]
 
     with plt.rc_context(
         {
@@ -426,30 +426,34 @@ def plot_boxplots(
             "ytick.color": "#2B2B2B",
         }
     ):
-        figure, axis = plt.subplots(figsize=(10, 4))
-        for position, state in enumerate(PLOT_STATE_ORDER, start=1):
-            observations = values.get(state, [])
-            if not observations:
-                continue
-            axis.boxplot(
-                observations,
-                positions=[position],
-                widths=0.48,
-                whis=1.5,
-                showfliers=False,
-                patch_artist=True,
-                medianprops={"color": "#1F1F1F", "linewidth": 1.1},
-                whiskerprops={"color": BOX_COLOR, "linewidth": 1.0},
-                capprops={"color": BOX_COLOR, "linewidth": 1.0},
-                boxprops={
-                    "facecolor": "white",
-                    "edgecolor": BOX_COLOR,
-                    "linewidth": 1.3,
-                },
-            )
+        figure, axis = plt.subplots(figsize=(12, 5))
+        for sample_index, sample in enumerate(sample_order):
+            color = SAMPLE_COLORS[sample]
+            for state_position, state in enumerate(PLOT_STATE_ORDER, start=1):
+                observations = values.get((sample, state), [])
+                if not observations:
+                    continue
+                axis.boxplot(
+                    observations,
+                    positions=[state_position + offsets[sample_index]],
+                    widths=box_width * 0.88,
+                    whis=1.5,
+                    showfliers=False,
+                    patch_artist=True,
+                    medianprops={"color": "#1F1F1F", "linewidth": 0.8},
+                    whiskerprops={"color": color, "linewidth": 0.8},
+                    capprops={"color": color, "linewidth": 0.8},
+                    boxprops={
+                        "facecolor": color,
+                        "edgecolor": color,
+                        "linewidth": 0.9,
+                    },
+                )
 
-        axis.set_title("DNA methylation under different chromatin states", fontsize=12, pad=8)
-        axis.set_ylabel("Methylation Levels", fontsize=10)
+        axis.set_title(
+            "DNA methylation under different chromatin states", fontsize=12, pad=8
+        )
+        axis.set_ylabel("Methylation Levels", fontsize=12)
         axis.set_ylim(-0.05, 1.03)
         axis.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
         axis.set_xticks(
@@ -461,6 +465,22 @@ def plot_boxplots(
         )
         axis.grid(axis="both", color="#D9D9D9", linewidth=0.8, alpha=0.8)
         axis.set_axisbelow(True)
+        axis.legend(
+            handles=[
+                Patch(
+                    facecolor=SAMPLE_COLORS[sample],
+                    edgecolor=SAMPLE_COLORS[sample],
+                    label=sample,
+                )
+                for sample in sample_order
+            ],
+            title="Sample",
+            loc="center left",
+            bbox_to_anchor=(1.01, 0.5),
+            frameon=True,
+            fontsize=8,
+            title_fontsize=8,
+        )
         figure.tight_layout()
         figure.savefig(path, dpi=300, bbox_inches="tight")
         plt.close(figure)
@@ -468,20 +488,11 @@ def plot_boxplots(
 
 def plot_spot_filtering(
     path: Path,
-    matched_sites_by_spot: list[tuple[str, int]],
+    matched_sites_by_sample: dict[str, list[tuple[str, int]]],
     min_total_sites: int,
+    sample_order: list[str],
 ) -> None:
-    """Plot the matched-CG rank used by the spot-level coverage filter."""
-    ordered = sorted(
-        matched_sites_by_spot,
-        key=lambda item: (-item[1], item[0]),
-    )
-    ranks = list(range(1, len(ordered) + 1))
-    site_counts = [site_count for _, site_count in ordered]
-    passing = [site_count >= min_total_sites for site_count in site_counts]
-    retained_count = sum(passing)
-    filtered_count = len(ordered) - retained_count
-
+    """Plot per-sample matched-CG ranks used by the spot coverage filter."""
     with plt.rc_context(
         {
             "font.family": "sans-serif",
@@ -492,35 +503,31 @@ def plot_spot_filtering(
             "ytick.color": "#2B2B2B",
         }
     ):
-        figure, axis = plt.subplots(figsize=(5, 4))
-
-        retained_ranks = [rank for rank, keep in zip(ranks, passing) if keep]
-        retained_sites = [
-            site_count for site_count, keep in zip(site_counts, passing) if keep
-        ]
-        filtered_ranks = [rank for rank, keep in zip(ranks, passing) if not keep]
-        filtered_sites = [
-            site_count for site_count, keep in zip(site_counts, passing) if not keep
-        ]
-        if retained_ranks:
-            axis.scatter(
-                retained_ranks,
-                retained_sites,
-                color=BOX_COLOR,
-                s=10,
-                label=f"Retained (n={retained_count:,})",
+        figure, axis = plt.subplots(figsize=(8, 5))
+        maximum_spot_count = 0
+        for sample in sample_order:
+            ordered = sorted(
+                matched_sites_by_sample[sample],
+                key=lambda item: (-item[1], item[0]),
             )
-        if filtered_ranks:
+            ranks = list(range(1, len(ordered) + 1))
+            site_counts = [site_count for _, site_count in ordered]
+            retained_count = sum(
+                site_count >= min_total_sites for site_count in site_counts
+            )
+            maximum_spot_count = max(maximum_spot_count, len(ordered))
             axis.scatter(
-                filtered_ranks,
-                filtered_sites,
-                color="#8C8C8C",
-                s=10,
-                label=f"Filtered (n={filtered_count:,})",
+                ranks,
+                site_counts,
+                color=SAMPLE_COLORS[sample],
+                s=8,
+                alpha=0.75,
+                linewidths=0,
+                label=f"{sample} ({retained_count:,}/{len(ordered):,} retained)",
             )
         axis.axhline(
             min_total_sites,
-            color="#D73027",
+            color="#1F1F1F",
             linestyle="--",
             linewidth=1.2,
             label=f"Threshold = {min_total_sites:,}",
@@ -530,10 +537,15 @@ def plot_spot_filtering(
         axis.set_title("Spot filtering by matched CG coverage", fontsize=12, pad=8)
         axis.set_xlabel("Spot rank (highest coverage first)", fontsize=10)
         axis.set_ylabel("Matched CG sites", fontsize=10)
-        axis.set_xlim(0.5, len(ordered) + 0.5)
+        axis.set_xlim(0.5, maximum_spot_count + 0.5)
         axis.grid(axis="both", color="#D9D9D9", linewidth=0.8, alpha=0.8)
         axis.set_axisbelow(True)
-        axis.legend(frameon=False, fontsize=9)
+        axis.legend(
+            loc="center left",
+            bbox_to_anchor=(1.01, 0.5),
+            frameon=False,
+            fontsize=8,
+        )
         figure.tight_layout()
         figure.savefig(path, dpi=300, bbox_inches="tight")
         plt.close(figure)
@@ -541,17 +553,29 @@ def plot_spot_filtering(
 
 def main() -> None:
     args = parse_args()
-    host_dir = args.host_dir.expanduser().resolve()
     chromhmm_cm = args.chromhmm_cm.expanduser().resolve()
     cpg_reference = args.cpg_reference.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
     for path, description in (
-        (host_dir, "host directory"),
         (chromhmm_cm, "ChromHMM mask"),
         (cpg_reference, "CpG reference"),
     ):
-        if not path.exists():
+        if not path.is_file():
             raise SystemExit(f"{description} does not exist: {path}")
+
+    try:
+        sample_inputs = [resolve_sample_input(path) for path in args.sample_dirs]
+    except ValueError as error:
+        raise SystemExit(str(error)) from error
+    sample_order = [sample for sample, _ in sample_inputs]
+    duplicate_samples = sorted(
+        sample for sample in set(sample_order) if sample_order.count(sample) > 1
+    )
+    if duplicate_samples:
+        raise SystemExit("Duplicate sample names: " + ", ".join(duplicate_samples))
+    missing_colors = [sample for sample in sample_order if sample not in SAMPLE_COLORS]
+    if missing_colors:
+        raise SystemExit("SAMPLE_COLORS lacks entries for: " + ", ".join(missing_colors))
 
     try:
         chromhmm_index = read_chromhmm_index(chromhmm_cm, cpg_reference)
@@ -563,32 +587,33 @@ def main() -> None:
         flush=True,
     )
 
-    paths = discover_files(host_dir)
-    if not paths:
-        raise SystemExit(f"No *.CG.cov files found below {host_dir}")
-
     detail_rows: list[dict[str, object]] = []
     files_processed = 0
-    spots_retained = 0
-    matched_sites_total = 0
-    unmatched_sites_total = 0
-    matched_sites_by_spot: list[tuple[str, int]] = []
-    for path in paths:
+    matched_sites_by_sample: dict[str, list[tuple[str, int]]] = {
+        sample: [] for sample in sample_order
+    }
+    for sample, coverage_path in sample_inputs:
         try:
-            stats_by_state, matched_sites, unmatched_sites = process_coverage_file(
-                path, chromhmm_index
-            )
+            (
+                stats_by_spot,
+                sample_matched_by_spot,
+            ) = process_coverage_file(coverage_path, chromhmm_index)
         except (OSError, UnicodeError, ValueError) as error:
             raise SystemExit(str(error)) from error
         files_processed += 1
-        matched_sites_total += matched_sites
-        unmatched_sites_total += unmatched_sites
-        spot = sample_name(path)
-        matched_sites_by_spot.append((spot, matched_sites))
-        if matched_sites >= args.min_total_sites:
-            for state, stats in stats_by_state.items():
+
+        for spot in sorted(sample_matched_by_spot):
+            matched_sites = sample_matched_by_spot[spot]
+            matched_sites_by_sample[sample].append((spot, matched_sites))
+            if matched_sites < args.min_total_sites:
+                continue
+            for state in chromhmm_index.labels:
+                stats = stats_by_spot.get(spot, {}).get(state)
+                if stats is None:
+                    continue
                 detail_rows.append(
                     {
+                        "sample": sample,
                         "spot": spot,
                         "context": "CG",
                         "state": state,
@@ -596,9 +621,11 @@ def main() -> None:
                         "methylation_rate": stats.rate,
                     }
                 )
-            spots_retained += 1
-        if files_processed % 100 == 0:
-            print(f"Processed {files_processed:,} CG coverage files", flush=True)
+
+        print(
+            f"Sample={sample} spots={len(sample_matched_by_spot):,} ",
+            flush=True,
+        )
 
     if not detail_rows:
         raise SystemExit("No spots passed --min-total-sites")
@@ -607,44 +634,31 @@ def main() -> None:
         state for state in chromhmm_index.labels if state not in PLOT_STATE_ORDER
     ]
     summary_order = list(PLOT_STATE_ORDER) + extra_states
-    summary_rows = summarize_rows(detail_rows, args.min_sites, summary_order)
+    summary_rows = summarize_rows(
+        detail_rows, args.min_sites, sample_order, summary_order
+    )
     output_dir.mkdir(parents=True, exist_ok=True)
     detail_path = output_dir / "chromhmm_methylation_by_spot.tsv.gz"
     summary_path = output_dir / "chromhmm_methylation_summary.tsv"
     figure_path = output_dir / "chromhmm_methylation_boxplots.png"
     filter_figure_path = output_dir / "spot_filtering_rank.png"
-    definition_path = output_dir / "chromhmm_state_definitions.tsv"
 
     write_detail(detail_path, detail_rows)
     write_tsv(summary_path, summary_rows)
-    write_tsv(
-        definition_path,
-        [
-            {
-                "state": state,
-                "description": STATE_DESCRIPTIONS.get(state, "ChromHMM categorical state"),
-                "plotted_in_reference_order": state in PLOT_STATE_ORDER,
-            }
-            for state in summary_order
-        ],
-    )
-    plot_boxplots(figure_path, detail_rows, args.min_sites)
+    plot_boxplots(figure_path, detail_rows, args.min_sites, sample_order)
     plot_spot_filtering(
         filter_figure_path,
-        matched_sites_by_spot,
+        matched_sites_by_sample,
         args.min_total_sites,
+        sample_order,
     )
 
     print("Context: CG")
     print(f"Coverage files: {files_processed:,}")
-    print(f"Spots retained: {spots_retained:,}")
-    print(f"Matched CG sites: {matched_sites_total:,}")
-    print(f"Unmatched CG sites: {unmatched_sites_total:,}")
     print(f"Figure: {figure_path}")
     print(f"Filter figure: {filter_figure_path}")
     print(f"Summary: {summary_path}")
     print(f"Per-spot table: {detail_path}")
-    print(f"Definitions: {definition_path}")
 
 
 if __name__ == "__main__":
