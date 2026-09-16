@@ -1,18 +1,5 @@
 #!/usr/bin/env python3
-"""Convert a DBiT methylation Matrix Market directory to AnnData.
-
-The input directory is expected to contain these files::
-
-    matrix.mtx.gz
-    features.tsv.gz
-    barcodes.tsv.gz
-    tissue_positions.tsv.gz
-    tissue_raw_image.png
-
-Matrix Market files store features by spots.  AnnData stores spots by
-features, so the matrix is transposed while loading.  The grayscale image is
-downsampled from 0.294 to 2.94 micrometres per pixel.
-"""
+"""Combine DBiT residual and methylation Matrix Market data in one AnnData."""
 
 from __future__ import annotations
 
@@ -33,6 +20,10 @@ from scipy.io import mmread
 SOURCE_PIXEL_SIZE_UM = 0.294
 HIRES_PIXEL_SIZE_UM = 2.94
 IMAGE_SCALE_FACTOR = SOURCE_PIXEL_SIZE_UM / HIRES_PIXEL_SIZE_UM
+MATRIX_DIRECTORIES = {
+    "residuals": "mean_shrunken_residuals",
+    "methylation": "methylation_fractions",
+}
 INPUT_FILENAMES = {
     "matrix": "matrix.mtx.gz",
     "features": "features.tsv.gz",
@@ -53,26 +44,40 @@ POSITION_COLUMNS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Read a DBiT methylation sparse-matrix folder and write one h5ad "
-            "file containing the matrix, spot positions, and downsampled image."
+            "Read residual and methylation sparse-matrix folders and write one "
+            "h5ad containing both matrices, shared positions, and a shared image."
         )
     )
     parser.add_argument(
         "--input-dir",
         type=Path,
         required=True,
-        help="Directory containing matrix.mtx.gz and its spatial companion files.",
+        help=(
+            "Directory containing mean_shrunken_residuals/ and "
+            "methylation_fractions/."
+        ),
     )
     return parser.parse_args()
 
 
-def resolve_inputs(input_dir: Path) -> dict[str, Path]:
+def resolve_inputs(input_dir: Path) -> dict[str, dict[str, Path]]:
     input_dir = input_dir.expanduser().resolve()
     if not input_dir.is_dir():
         raise ValueError(f"Input directory does not exist: {input_dir}")
 
-    paths = {key: input_dir / name for key, name in INPUT_FILENAMES.items()}
-    missing = [path for path in paths.values() if not path.is_file()]
+    paths = {
+        layer: {
+            key: input_dir / directory / filename
+            for key, filename in INPUT_FILENAMES.items()
+        }
+        for layer, directory in MATRIX_DIRECTORIES.items()
+    }
+    missing = [
+        path
+        for layer_paths in paths.values()
+        for path in layer_paths.values()
+        if not path.is_file()
+    ]
     if missing:
         raise ValueError(
             "Missing required input file(s): " + ", ".join(str(path) for path in missing)
@@ -196,26 +201,44 @@ def read_image(path: Path) -> np.ndarray:
         return np.asarray(resized)
 
 
-def build_anndata(paths: dict[str, Path], library_id: str) -> ad.AnnData:
-    feature_frame = read_features(paths["features"])
-    matrix_barcodes = read_nonempty_lines(paths["barcodes"])
-    if len(matrix_barcodes) != len(set(matrix_barcodes)):
-        raise ValueError(f"Duplicate matrix barcode in {paths['barcodes']}")
-
-    print("Reading sparse matrix ...", file=sys.stderr, flush=True)
-    matrix = mmread(paths["matrix"], spmatrix=True)
+def read_matrix(
+    path: Path,
+    expected_shape: tuple[int, int],
+    layer: str,
+) -> sparse.csr_matrix:
+    print(f"Reading {layer} sparse matrix ...", file=sys.stderr, flush=True)
+    matrix = mmread(path, spmatrix=True)
     if not sparse.issparse(matrix):
         matrix = sparse.coo_matrix(matrix)
-    expected_shape = (len(feature_frame), len(matrix_barcodes))
     if matrix.shape != expected_shape:
         raise ValueError(
-            f"Matrix shape {matrix.shape} does not match "
+            f"{layer} matrix shape {matrix.shape} does not match "
             f"{expected_shape[0]} features x {expected_shape[1]} barcodes"
         )
     matrix = matrix.astype(np.float32).transpose().tocsr()
+    matrix.sum_duplicates()
     matrix.sort_indices()
+    if not np.isfinite(matrix.data).all():
+        raise ValueError(f"{layer} matrix contains non-finite values")
+    return matrix
 
-    all_positions = read_positions(paths["positions"])
+
+def build_anndata(
+    paths: dict[str, dict[str, Path]], library_id: str
+) -> ad.AnnData:
+    shared_paths = paths["residuals"]
+    feature_frame = read_features(shared_paths["features"])
+    matrix_barcodes = read_nonempty_lines(shared_paths["barcodes"])
+    if len(matrix_barcodes) != len(set(matrix_barcodes)):
+        raise ValueError(f"Duplicate matrix barcode in {shared_paths['barcodes']}")
+
+    expected_shape = (len(feature_frame), len(matrix_barcodes))
+    matrices = {
+        layer: read_matrix(layer_paths["matrix"], expected_shape, layer)
+        for layer, layer_paths in paths.items()
+    }
+
+    all_positions = read_positions(shared_paths["positions"])
     matched = match_positions(matrix_barcodes, all_positions)
 
     obs = matched[
@@ -238,9 +261,18 @@ def build_anndata(paths: dict[str, Path], library_id: str) -> ad.AnnData:
         obs[column] = obs[column].astype(np.int32)
 
     print("Reading and downsampling grayscale image ...", file=sys.stderr, flush=True)
-    image = read_image(paths["image"])
+    image = read_image(shared_paths["image"])
 
-    adata = ad.AnnData(X=matrix, obs=obs, var=feature_frame)
+    adata = ad.AnnData(
+        X=matrices["residuals"],
+        obs=obs,
+        var=feature_frame,
+        layers={"methylation": matrices["methylation"]},
+    )
+    adata.uns["matrix_sources"] = {
+        "X": MATRIX_DIRECTORIES["residuals"],
+        "methylation": MATRIX_DIRECTORIES["methylation"],
+    }
     adata.uns["spatial"] = {
         library_id: {
             "images": {"hires": image},
@@ -280,8 +312,8 @@ def main() -> None:
     args = parse_args()
     try:
         paths = resolve_inputs(args.input_dir)
-        input_dir = paths["matrix"].parent
-        output = (input_dir.parent / f"{input_dir.name}.h5ad").expanduser().resolve()
+        input_dir = args.input_dir.expanduser().resolve()
+        output = (input_dir / f"{input_dir.name}.h5ad").resolve()
         library_id = input_dir.name
         validate_output(output)
 
@@ -294,6 +326,7 @@ def main() -> None:
     print(
         f"Wrote {output.expanduser().resolve()} "
         f"({adata.n_obs:,} spots x {adata.n_vars:,} features; "
+        f"X residuals; layer methylation; "
         f"image {image.shape[1]:,} x {image.shape[0]:,})"
     )
 
