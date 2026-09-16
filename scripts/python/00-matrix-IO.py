@@ -18,7 +18,7 @@ from scipy.io import mmread
 
 
 SOURCE_PIXEL_SIZE_UM = 0.294
-HIRES_PIXEL_SIZE_UM = 2.94
+HIRES_PIXEL_SIZE_UM = 5.88
 IMAGE_SCALE_FACTOR = SOURCE_PIXEL_SIZE_UM / HIRES_PIXEL_SIZE_UM
 MATRIX_DIRECTORIES = {
     "residuals": "mean_shrunken_residuals",
