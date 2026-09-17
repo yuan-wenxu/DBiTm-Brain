@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combine DBiT residual and methylation Matrix Market data in one AnnData."""
+"""Read one DBiT transcriptome Matrix Market folder into AnnData."""
 
 from __future__ import annotations
 
@@ -20,10 +20,6 @@ from scipy.io import mmread
 SOURCE_PIXEL_SIZE_UM = 0.294
 HIRES_PIXEL_SIZE_UM = 5.88
 IMAGE_SCALE_FACTOR = SOURCE_PIXEL_SIZE_UM / HIRES_PIXEL_SIZE_UM
-MATRIX_DIRECTORIES = {
-    "residuals": "mean_shrunken_residuals",
-    "methylation": "methylation_fractions",
-}
 INPUT_FILENAMES = {
     "matrix": "matrix.mtx.gz",
     "features": "features.tsv.gz",
@@ -44,8 +40,8 @@ POSITION_COLUMNS = (
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Read residual and methylation sparse-matrix folders and write one "
-            "h5ad containing both matrices, shared positions, and a shared image."
+            "Read one transcriptome sparse-matrix folder and write an h5ad "
+            "containing the expression matrix, positions, and tissue image."
         )
     )
     parser.add_argument(
@@ -53,31 +49,32 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         required=True,
         help=(
-            "Directory containing mean_shrunken_residuals/ and "
-            "methylation_fractions/."
+            "Directory containing matrix.mtx.gz, features.tsv.gz, "
+            "barcodes.tsv.gz, tissue_positions.tsv.gz, and tissue_raw_image.png."
         ),
+    )
+    parser.add_argument(
+        "--output",
+        type=Path,
+        required=True,
+        help="Output h5ad path; the file must not already exist.",
+    )
+    parser.add_argument(
+        "--library-id",
+        default="mrna",
+        required=True,
+        help="Library identifier used as the key in adata.uns['spatial'].",
     )
     return parser.parse_args()
 
 
-def resolve_inputs(input_dir: Path) -> dict[str, dict[str, Path]]:
+def resolve_inputs(input_dir: Path) -> dict[str, Path]:
     input_dir = input_dir.expanduser().resolve()
     if not input_dir.is_dir():
         raise ValueError(f"Input directory does not exist: {input_dir}")
 
-    paths = {
-        layer: {
-            key: input_dir / directory / filename
-            for key, filename in INPUT_FILENAMES.items()
-        }
-        for layer, directory in MATRIX_DIRECTORIES.items()
-    }
-    missing = [
-        path
-        for layer_paths in paths.values()
-        for path in layer_paths.values()
-        if not path.is_file()
-    ]
+    paths = {key: input_dir / filename for key, filename in INPUT_FILENAMES.items()}
+    missing = [path for path in paths.values() if not path.is_file()]
     if missing:
         raise ValueError(
             "Missing required input file(s): " + ", ".join(str(path) for path in missing)
@@ -130,8 +127,7 @@ def read_positions(path: Path) -> pd.DataFrame:
             f"Missing position column(s) in {path}: {', '.join(missing)}"
         )
 
-    integer_columns = POSITION_COLUMNS[1:]
-    for column in integer_columns:
+    for column in POSITION_COLUMNS[1:]:
         try:
             positions[column] = pd.to_numeric(
                 positions[column], errors="raise", downcast="integer"
@@ -146,45 +142,20 @@ def read_positions(path: Path) -> pd.DataFrame:
     return positions
 
 
-def parse_matrix_barcode(barcode: str) -> tuple[int, int]:
-    """Parse ``RRCC`` or ``RR_CC`` as fixed two-digit row/column indices."""
-    if len(barcode) == 5 and barcode[2] == "_":
-        digits = barcode[:2] + barcode[3:]
-    elif len(barcode) == 4:
-        digits = barcode
-    else:
-        digits = ""
-    if len(digits) != 4 or not digits.isascii() or not digits.isdigit():
-        raise ValueError(
-            f"Invalid matrix barcode {barcode!r}; expected RRCC or RR_CC "
-            "with two-digit row and column indices"
-        )
-    return int(digits[:2]), int(digits[2:])
-
-
 def match_positions(matrix_barcodes: list[str], positions: pd.DataFrame) -> pd.DataFrame:
-    """Match fixed-width numeric matrix barcodes to position row/column indices."""
-    coordinates = [parse_matrix_barcode(barcode) for barcode in matrix_barcodes]
-    if len(coordinates) != len(set(coordinates)):
-        raise ValueError("Matrix barcodes contain duplicate row/column coordinates")
-
-    coordinate_lookup = positions.set_index(["array_row", "array_col"], drop=False)
+    """Match matrix sequence barcodes directly to the position table."""
+    sequence_lookup = positions.set_index("barcode", drop=False)
     missing = [
-        (barcode, coordinate)
-        for barcode, coordinate in zip(matrix_barcodes, coordinates, strict=True)
-        if coordinate not in coordinate_lookup.index
+        barcode for barcode in matrix_barcodes if barcode not in sequence_lookup.index
     ]
     if missing:
-        preview = ", ".join(
-            f"{barcode} -> ({row}, {column})"
-            for barcode, (row, column) in missing[:5]
-        )
+        preview = ", ".join(missing[:5])
         suffix = " ..." if len(missing) > 5 else ""
         raise ValueError(
             f"{len(missing)} matrix barcode(s) have no position: {preview}{suffix}"
         )
 
-    matched = coordinate_lookup.loc[coordinates].copy()
+    matched = sequence_lookup.loc[matrix_barcodes].copy()
     matched.index = pd.Index(matrix_barcodes, name="matrix_barcode")
     return matched
 
@@ -201,45 +172,34 @@ def read_image(path: Path) -> np.ndarray:
         return np.asarray(resized)
 
 
-def read_matrix(
-    path: Path,
-    expected_shape: tuple[int, int],
-    layer: str,
-) -> sparse.csr_matrix:
-    print(f"Reading {layer} sparse matrix ...", file=sys.stderr, flush=True)
+def read_matrix(path: Path, expected_shape: tuple[int, int]) -> sparse.csr_matrix:
+    print("Reading transcriptome sparse matrix ...", file=sys.stderr, flush=True)
     matrix = mmread(path, spmatrix=True)
     if not sparse.issparse(matrix):
         matrix = sparse.coo_matrix(matrix)
     if matrix.shape != expected_shape:
         raise ValueError(
-            f"{layer} matrix shape {matrix.shape} does not match "
+            f"Transcriptome matrix shape {matrix.shape} does not match "
             f"{expected_shape[0]} features x {expected_shape[1]} barcodes"
         )
-    matrix = matrix.astype(np.float32).transpose().tocsr()
+    matrix = matrix.transpose().tocsr()
     matrix.sum_duplicates()
     matrix.sort_indices()
     if not np.isfinite(matrix.data).all():
-        raise ValueError(f"{layer} matrix contains non-finite values")
+        raise ValueError("Transcriptome matrix contains non-finite values")
     return matrix
 
 
-def build_anndata(
-    paths: dict[str, dict[str, Path]], library_id: str
-) -> ad.AnnData:
-    shared_paths = paths["residuals"]
-    feature_frame = read_features(shared_paths["features"])
-    matrix_barcodes = read_nonempty_lines(shared_paths["barcodes"])
+def build_anndata(paths: dict[str, Path], library_id: str) -> ad.AnnData:
+    feature_frame = read_features(paths["features"])
+    matrix_barcodes = read_nonempty_lines(paths["barcodes"])
     if len(matrix_barcodes) != len(set(matrix_barcodes)):
-        raise ValueError(f"Duplicate matrix barcode in {shared_paths['barcodes']}")
+        raise ValueError(f"Duplicate matrix barcode in {paths['barcodes']}")
 
-    expected_shape = (len(feature_frame), len(matrix_barcodes))
-    matrices = {
-        layer: read_matrix(layer_paths["matrix"], expected_shape, layer)
-        for layer, layer_paths in paths.items()
-    }
-
-    all_positions = read_positions(shared_paths["positions"])
-    matched = match_positions(matrix_barcodes, all_positions)
+    matrix = read_matrix(
+        paths["matrix"], (len(feature_frame), len(matrix_barcodes))
+    )
+    matched = match_positions(matrix_barcodes, read_positions(paths["positions"]))
 
     obs = matched[
         [
@@ -261,18 +221,10 @@ def build_anndata(
         obs[column] = obs[column].astype(np.int32)
 
     print("Reading and downsampling grayscale image ...", file=sys.stderr, flush=True)
-    image = read_image(shared_paths["image"])
+    image = read_image(paths["image"])
 
-    adata = ad.AnnData(
-        X=matrices["residuals"],
-        obs=obs,
-        var=feature_frame,
-        layers={"methylation": matrices["methylation"]},
-    )
-    adata.uns["matrix_sources"] = {
-        "X": MATRIX_DIRECTORIES["residuals"],
-        "methylation": MATRIX_DIRECTORIES["methylation"],
-    }
+    adata = ad.AnnData(X=matrix, obs=obs, var=feature_frame)
+    adata.uns["matrix_sources"] = {"X": "transcriptome"}
     adata.uns["spatial"] = {
         library_id: {
             "images": {"hires": image},
@@ -311,10 +263,12 @@ def write_anndata(adata: ad.AnnData, output: Path) -> None:
 def main() -> None:
     args = parse_args()
     try:
-        paths = resolve_inputs(args.input_dir)
         input_dir = args.input_dir.expanduser().resolve()
-        output = (input_dir / f"{input_dir.name}.h5ad").resolve()
-        library_id = input_dir.name
+        paths = resolve_inputs(input_dir)
+        output = args.output.expanduser().resolve()
+        library_id = args.library_id.strip()
+        if not library_id:
+            raise ValueError("Library identifier must not be empty")
         validate_output(output)
 
         adata = build_anndata(paths, library_id)
@@ -324,10 +278,9 @@ def main() -> None:
 
     image = adata.uns["spatial"][library_id]["images"]["hires"]
     print(
-        f"Wrote {output.expanduser().resolve()} "
+        f"Wrote {output} "
         f"({adata.n_obs:,} spots x {adata.n_vars:,} features; "
-        f"X residuals; layer methylation; "
-        f"image {image.shape[1]:,} x {image.shape[0]:,})"
+        f"X transcriptome; image {image.shape[1]:,} x {image.shape[0]:,})"
     )
 
 
