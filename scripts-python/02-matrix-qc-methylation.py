@@ -14,6 +14,8 @@ from scipy import sparse
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from utils import in_tissue_mask
+
 
 METHYLATION_LAYER = "methylation"
 
@@ -58,20 +60,6 @@ def observation_mask(matrix: sparse.spmatrix) -> sparse.csr_matrix:
 
 def nonzero_counts(matrix: sparse.spmatrix, axis: int) -> np.ndarray:
     return np.asarray(matrix.getnnz(axis=axis)).ravel()
-
-
-def in_tissue_mask(adata: ad.AnnData) -> np.ndarray:
-    """Return a validated mask for spots marked as inside tissue."""
-    if "in_tissue" not in adata.obs:
-        raise ValueError("The input H5AD is missing the obs column 'in_tissue'")
-
-    try:
-        values = adata.obs["in_tissue"].to_numpy(dtype=float)
-    except (TypeError, ValueError) as error:
-        raise ValueError("obs['in_tissue'] must contain only 0 or 1") from error
-    if not np.isfinite(values).all() or not np.isin(values, (0, 1)).all():
-        raise ValueError("obs['in_tissue'] must contain only 0 or 1")
-    return values == 1
 
 
 def filter_anndata(

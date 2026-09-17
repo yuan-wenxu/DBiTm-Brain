@@ -4,17 +4,21 @@
 from __future__ import annotations
 
 import argparse
-import gzip
 import sys
-import tempfile
 from pathlib import Path
-
 import anndata as ad
 import numpy as np
 import pandas as pd
-from PIL import Image
 from scipy import sparse
 from scipy.io import mmread
+
+from utils import (
+    read_features,
+    read_nonempty_lines,
+    read_positions,
+    read_image,
+    validate_output,
+    write_anndata)
 
 
 SOURCE_PIXEL_SIZE_UM = 0.294
@@ -31,14 +35,6 @@ INPUT_FILENAMES = {
     "positions": "tissue_positions.tsv.gz",
     "image": "tissue_raw_image.png",
 }
-POSITION_COLUMNS = (
-    "barcode",
-    "in_tissue",
-    "array_row",
-    "array_col",
-    "pxl_row_in_fullres",
-    "pxl_col_in_fullres",
-)
 
 
 def parse_args() -> argparse.Namespace:
@@ -97,67 +93,6 @@ def resolve_inputs(input_dir: Path) -> dict[str, dict[str, Path]]:
     return paths
 
 
-def read_nonempty_lines(path: Path) -> list[str]:
-    with gzip.open(path, mode="rt", encoding="utf-8") as handle:
-        values = [line.rstrip("\r\n") for line in handle]
-    if not values or any(not value for value in values):
-        raise ValueError(f"Expected non-empty lines in {path}")
-    return values
-
-
-def read_features(path: Path) -> pd.DataFrame:
-    features = pd.read_csv(
-        path,
-        sep="\t",
-        header=None,
-        dtype=str,
-        compression="gzip",
-        keep_default_na=False,
-    )
-    if features.empty:
-        raise ValueError(f"No features found in {path}")
-    if features.shape[1] != 3:
-        raise ValueError(
-            f"Expected exactly 3 feature columns in {path}, found {features.shape[1]}"
-        )
-
-    features.columns = ["feature_id", "feature_name", "feature_type"]
-    if (features["feature_id"] == "").any():
-        raise ValueError(f"Empty feature identifier in {path}")
-    if features["feature_id"].duplicated().any():
-        duplicate = features.loc[
-            features["feature_id"].duplicated(), "feature_id"
-        ].iloc[0]
-        raise ValueError(f"Duplicate feature identifier in {path}: {duplicate}")
-
-    features.index = pd.Index(features.pop("feature_id"), name="feature_id")
-    return features
-
-
-def read_positions(path: Path) -> pd.DataFrame:
-    positions = pd.read_csv(path, sep="\t", compression="gzip", dtype=str)
-    missing = [column for column in POSITION_COLUMNS if column not in positions.columns]
-    if missing:
-        raise ValueError(
-            f"Missing position column(s) in {path}: {', '.join(missing)}"
-        )
-
-    integer_columns = POSITION_COLUMNS[1:]
-    for column in integer_columns:
-        try:
-            positions[column] = pd.to_numeric(
-                positions[column], errors="raise", downcast="integer"
-            )
-        except (TypeError, ValueError) as error:
-            raise ValueError(f"Position column {column!r} is not integer-valued") from error
-
-    if positions["barcode"].duplicated().any():
-        raise ValueError(f"Duplicate sequence barcode in {path}")
-    if positions.duplicated(["array_row", "array_col"]).any():
-        raise ValueError(f"Duplicate array_row/array_col pair in {path}")
-    return positions
-
-
 def parse_matrix_barcode(barcode: str) -> tuple[int, int]:
     """Parse ``RRCC`` or ``RR_CC`` as fixed two-digit row/column indices."""
     if len(barcode) == 5 and barcode[2] == "_":
@@ -199,18 +134,6 @@ def match_positions(matrix_barcodes: list[str], positions: pd.DataFrame) -> pd.D
     matched = coordinate_lookup.loc[coordinates].copy()
     matched.index = pd.Index(matrix_barcodes, name="matrix_barcode")
     return matched
-
-
-def read_image(path: Path) -> np.ndarray:
-    Image.MAX_IMAGE_PIXELS = None
-    with Image.open(path) as image:
-        if image.mode != "L":
-            raise ValueError(f"Expected an 8-bit grayscale image, found mode {image.mode}")
-        target_size = tuple(
-            max(1, round(length * IMAGE_SCALE_FACTOR)) for length in image.size
-        )
-        resized = image.resize(target_size, resample=Image.Resampling.LANCZOS)
-        return np.asarray(resized)
 
 
 def read_matrix(
@@ -273,7 +196,7 @@ def build_anndata(
         obs[column] = obs[column].astype(np.int32)
 
     print("Reading and downsampling grayscale image ...", file=sys.stderr, flush=True)
-    image = read_image(shared_paths["image"])
+    image = read_image(shared_paths["image"], IMAGE_SCALE_FACTOR)
 
     adata = ad.AnnData(
         X=matrices["residuals"],
@@ -296,28 +219,6 @@ def build_anndata(
         }
     }
     return adata
-
-
-def validate_output(output: Path) -> None:
-    if output.exists():
-        raise ValueError(f"Output file already exists: {output}.")
-
-
-def write_anndata(adata: ad.AnnData, output: Path) -> None:
-    output.parent.mkdir(parents=True, exist_ok=True)
-
-    temporary_path: Path | None = None
-    try:
-        with tempfile.NamedTemporaryFile(
-            prefix=f".{output.name}.", suffix=".tmp", dir=output.parent, delete=False
-        ) as temporary:
-            temporary_path = Path(temporary.name)
-        print(f"Writing {output} ...", file=sys.stderr, flush=True)
-        adata.write_h5ad(temporary_path)
-        temporary_path.replace(output)
-    finally:
-        if temporary_path is not None and temporary_path.exists():
-            temporary_path.unlink()
 
 
 def main() -> None:

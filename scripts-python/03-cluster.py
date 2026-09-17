@@ -24,6 +24,8 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Rectangle
 
+from utils import spatial_plot_data
+
 
 # Based on scripts/benchmark/saturation.py, with additional purple and yellow
 # tones that remain clear over a grayscale tissue image.
@@ -289,28 +291,6 @@ def run_umap(
         n_jobs=1,
     )
     return model.fit_transform(scores)
-
-
-def spatial_plot_data(
-    adata: ad.AnnData,
-) -> tuple[np.ndarray, np.ndarray, np.ndarray, float]:
-    required = {"pxl_row_in_fullres", "pxl_col_in_fullres"}
-    missing = required - set(adata.obs.columns)
-    if missing:
-        raise ValueError(f"Missing spatial obs column(s): {', '.join(sorted(missing))}")
-
-    spatial = adata.uns.get("spatial", {})
-    if len(spatial) != 1:
-        raise ValueError("Expected exactly one library under adata.uns['spatial']")
-    library = next(iter(spatial.values()))
-    image = np.asarray(library["images"]["hires"])
-    scale = float(library["scalefactors"]["tissue_hires_scalef"])
-    hires_pixel_size_um = float(library["metadata"]["hires_pixel_size_um"])
-    if not np.isfinite(hires_pixel_size_um) or hires_pixel_size_um <= 0:
-        raise ValueError("hires_pixel_size_um must be finite and greater than zero")
-    x = adata.obs["pxl_col_in_fullres"].to_numpy(dtype=float) * scale
-    y = adata.obs["pxl_row_in_fullres"].to_numpy(dtype=float) * scale
-    return image, x, y, hires_pixel_size_um
 
 
 def cluster_colors(cluster_count: int) -> list[tuple[float, float, float, float]]:
