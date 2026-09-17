@@ -158,6 +158,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/importlib-metadata-9.0.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/joblib-1.5.3-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/legacy-api-wrap-1.5-pyhd8ed1ab_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/mudata-0.3.10-pyhd8ed1ab_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/munkres-1.1.4-pyhd8ed1ab_1.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/narwhals-2.25.0-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/natsort-8.4.0-pyhcf101f3_2.conda
@@ -173,7 +174,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/python-dotenv-1.2.3-pyhcf101f3_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/python_abi-3.12-8_cp312.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/scanpy-1.12.3-pyhd8ed1ab_0.conda
-      - conda: https://conda.anaconda.org/conda-forge/noarch/scverse-misc-0.1.3-pyhc364b38_0.conda
+      - conda: https://conda.anaconda.org/conda-forge/noarch/scverse-misc-0.1.1-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/seaborn-0.13.2-hd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/seaborn-base-0.13.2-pyhd8ed1ab_3.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/session-info2-0.4.2-pyhd8ed1ab_0.conda
@@ -2078,6 +2079,22 @@ packages:
   license_family: MOZILLA
   size: 15868
   timestamp: 1762187673390
+- conda: https://conda.anaconda.org/conda-forge/noarch/mudata-0.3.10-pyhd8ed1ab_0.conda
+  sha256: 071e407a98a6c72e15bddc871b030bff18cbc00ec3ab9463fcf1766851b0d251
+  md5: c3b1e8f9986beef5db8d42d00af174a6
+  depends:
+  - anndata >=0.10.8
+  - h5py
+  - numpy
+  - pandas >=1.4
+  - python >=3.10
+  - scipy
+  - scverse-misc >=0.0.3,<=0.1.1
+  - session-info2
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 44544
+  timestamp: 1783494646176
 - conda: https://conda.anaconda.org/conda-forge/noarch/munkres-1.1.4-pyhd8ed1ab_1.conda
   sha256: d09c47c2cf456de5c09fa66d2c3c5035aa1fa228a1983a433c47b876aa16ce90
   md5: 37293a85a0f4f77bbd9cf7aaefc62609
@@ -2269,9 +2286,9 @@ packages:
   license_family: BSD
   size: 2000712
   timestamp: 1785139227179
-- conda: https://conda.anaconda.org/conda-forge/noarch/scverse-misc-0.1.3-pyhc364b38_0.conda
-  sha256: 964f523d353236cce14b3112a88ce8f640351da53dc655c5d387047ece590c3f
-  md5: 7a5e9b214288cd2d0222a7f0f0e780c8
+- conda: https://conda.anaconda.org/conda-forge/noarch/scverse-misc-0.1.1-pyhc364b38_0.conda
+  sha256: 1c8844c735734c4821e79af51cae235ee1c8894cffd2cb47b60deca4f7b843ab
+  md5: 92d92c5072c47d48433ac24a2533d58a
   depends:
   - python >=3.12
   - session-info2
@@ -2279,8 +2296,8 @@ packages:
   - python
   license: BSD-3-Clause
   license_family: BSD
-  size: 27961
-  timestamp: 1784382460438
+  size: 26253
+  timestamp: 1782155539036
 - conda: https://conda.anaconda.org/conda-forge/noarch/seaborn-0.13.2-hd8ed1ab_3.conda
   noarch: python
   sha256: ea29a69b14dd6be5cdeeaa551bf50d78cafeaf0351e271e358f9b820fcab4cb0

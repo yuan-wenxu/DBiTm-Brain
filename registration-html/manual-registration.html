@@ -1,0 +1,272 @@
+<!doctype html>
+<!--
+Interface layout adapted from BrainAlign:
+https://github.com/yuan-wenxu/BrainAlign
+
+MIT License
+Copyright (c) 2026 yuan-wenxu
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SpatialAlign · ssDNA Image Registration</title>
+<style>
+:root {
+  color-scheme: light;
+  --ink:#14213d; --muted:#6b7280; --line:#dfe5ec; --paper:#fff;
+  --canvas:#eef2f6; --blue:#2f6fed; --blue-dark:#2058c7;
+  --coral:#f16f5c; --violet:#8b67d9; --mint:#25a98b;
+  --shadow:0 10px 32px rgba(30,50,80,.08);
+}
+* { box-sizing:border-box; }
+body { margin:0; min-width:320px; color:var(--ink); background:#f4f7fa; font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+button,input,select { font:inherit; }
+button { user-select:none; }
+.app-header { min-height:128px; padding:27px clamp(20px,4vw,64px); color:#fff; background:linear-gradient(120deg,#102e54 0%,#174b78 58%,#167e83 100%); display:flex; align-items:center; justify-content:space-between; gap:24px; }
+.app-header h1 { margin:2px 0 1px; font-size:clamp(28px,4vw,42px); letter-spacing:-1.2px; }
+.eyebrow { margin:0; color:#75dbdc; font-size:11px; font-weight:800; letter-spacing:2px; }
+.subtitle { margin:4px 0 0; color:#d7e5ef; font-size:14px; }
+main { width:min(1540px,calc(100% - 32px)); margin:20px auto 42px; }
+.card { overflow:hidden; background:var(--paper); border:1px solid var(--line); border-radius:10px; box-shadow:0 2px 10px rgba(30,50,80,.04); }
+.toolbar { min-height:62px; padding:10px 14px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+.tool-group { display:flex; align-items:center; gap:8px; }
+.tool-group label { color:var(--muted); font-size:12px; font-weight:700; }
+.toolbar-actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
+select { height:34px; padding:0 28px 0 10px; color:#314057; background:#fff; border:1px solid #d7dfe8; border-radius:6px; }
+.button,.icon-button,.view-controls button { border:0; border-radius:6px; cursor:pointer; transition:150ms ease; }
+.button { min-height:36px; padding:8px 14px; display:inline-flex; align-items:center; justify-content:center; gap:7px; font-size:12px; font-weight:700; }
+.button-primary { color:#fff; background:var(--blue); }
+.button-primary:hover { background:var(--blue-dark); }
+.button-secondary { color:#314057; background:#f7f9fb; border:1px solid #dbe2ea; }
+.button-secondary:hover { background:#eaf0f7; }
+.button-ghost { min-width:36px; padding-inline:0; color:#fff; background:rgba(255,255,255,.12); border:1px solid rgba(255,255,255,.25); font-size:17px; }
+.status { min-height:38px; margin:12px 0; padding:8px 12px; display:flex; align-items:center; gap:9px; color:#176550; background:#e8f8f1; border:1px solid #bde8d8; border-radius:7px; font-size:12px; }
+.status-icon { width:18px; height:18px; display:grid; place-items:center; color:#fff; background:currentColor; border-radius:50%; font-size:0; }
+.status-icon::after { content:"i"; color:#fff; font-size:11px; font-weight:900; }
+.card-heading { min-height:48px; padding:10px 14px; border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.card-heading > div { min-width:0; display:flex; align-items:center; gap:8px; }
+.card-heading h2 { margin:0; font-size:14px; }
+.dot { width:9px; height:9px; flex:0 0 auto; display:inline-block; border-radius:50%; }
+.mrna-dot { background:var(--coral); }
+.taps-dot { background:var(--blue); }
+.beta-dot { background:var(--mint); }
+.badge { padding:3px 6px; color:#596678; background:#edf1f4; border-radius:4px; font-size:9px; font-weight:800; letter-spacing:.7px; }
+.badge.fixed { color:#176550; background:#e8f8f1; }
+.image-info { overflow:hidden; max-width:160px; color:var(--muted); font-size:11px; text-overflow:ellipsis; white-space:nowrap; }
+.lower-grid { margin-top:14px; display:grid; grid-template-columns:minmax(0,1.65fr) minmax(330px,.75fr); gap:14px; align-items:start; }
+.result-card,.control-card { min-width:0; }
+.result-canvas-wrap { position:relative; height:min(68vh,760px); min-height:560px; overflow:hidden; background:var(--canvas); }
+#result-canvas { display:block; width:100%; height:100%; touch-action:none; cursor:grab; }
+#result-canvas.dragging { cursor:grabbing; }
+.view-controls { position:absolute; right:10px; bottom:10px; z-index:4; display:flex; align-items:center; gap:2px; padding:3px; background:rgba(255,255,255,.94); border:1px solid #d9e0e8; border-radius:7px; box-shadow:0 3px 12px rgba(30,50,80,.12); }
+.view-controls button { width:30px; height:28px; color:#35445a; background:transparent; font-size:16px; }
+.view-controls button:hover { background:#eaf0f7; }
+.view-controls output { min-width:48px; color:#647287; font-size:10px; text-align:center; }
+#hud { position:absolute; left:12px; bottom:12px; padding:6px 9px; color:#fff; background:rgba(16,32,52,.8); border-radius:5px; font-size:11px; pointer-events:none; }
+#layer-controls { max-height:calc(min(68vh,760px) - 49px); overflow:auto; }
+.layer { padding:13px 14px; border-bottom:1px solid var(--line); }
+.layer:last-child { border-bottom:0; }
+.layer-head { margin-bottom:9px; display:flex; align-items:center; gap:8px; }
+.layer-head strong { flex:1; font-size:13px; }
+.grid { display:grid; grid-template-columns:106px 1fr 70px; gap:7px 8px; align-items:center; }
+.grid label { color:#465467; font-size:12px; }
+input[type="range"] { width:100%; }
+input[type="number"] { width:70px; padding:4px; border:1px solid #bac4d1; border-radius:4px; }
+.reset-layer { padding:5px 8px; color:var(--blue); background:transparent; border:0; border-radius:5px; font-size:11px; font-weight:700; cursor:pointer; }
+.reset-layer:hover { background:#edf3ff; }
+dialog { width:min(520px,calc(100% - 32px)); color:var(--ink); border:0; border-radius:12px; box-shadow:0 24px 70px rgba(12,28,48,.3); }
+dialog::backdrop { background:rgba(10,25,45,.55); }
+.dialog-close { float:right; border:0; background:transparent; font-size:22px; cursor:pointer; }
+dialog h2 { margin-top:5px; }
+dialog li { margin:8px 0; }
+@media (max-width:1050px) { .lower-grid { grid-template-columns:1fr; } #layer-controls { max-height:none; } }
+</style>
+</head>
+<body>
+<header class="app-header">
+  <div>
+    <p class="eyebrow">ssDNA IMAGE REGISTRATION</p>
+    <h1>SpatialAlign</h1>
+    <p class="subtitle">Align resized full-field ssDNA images with a fixed TAPS-beta reference</p>
+  </div>
+  <button id="help-button" class="button button-ghost" aria-label="Show instructions">?</button>
+</header>
+
+<main>
+  <section class="toolbar card">
+    <div class="tool-group">
+      <label for="active-layer">Active moving layer</label>
+      <select id="active-layer"><option value="mrna">mRNA</option><option value="taps">TAPS</option></select>
+    </div>
+    <div class="toolbar-actions">
+      <button id="reset-all" class="button button-secondary">Reset Alignment</button>
+      <button id="save-json" class="button button-primary">Export Offsets and Rotation</button>
+    </div>
+  </section>
+
+  <div class="status" role="status"><span class="status-icon">i</span><span>Column offset is horizontal and row offset is vertical. Values use original hires-image pixels, not resized display pixels.</span></div>
+
+  <section class="lower-grid">
+    <article class="result-card card">
+      <div class="card-heading"><div><h2 id="overlay-title">mRNA + TAPS-beta</h2><span class="badge fixed">TAPS-BETA SPACE</span></div><span class="image-info">Hold Space and drag to pan</span></div>
+      <div class="result-canvas-wrap">
+        <canvas id="result-canvas" aria-label="Registration overlay"></canvas>
+        <div id="hud"></div>
+        <div class="view-controls"><button id="zoom-out" title="Zoom out">−</button><output id="zoom-value">100%</output><button id="zoom-in" title="Zoom in">＋</button><button id="fit-view" title="Fit to view">↙</button></div>
+      </div>
+    </article>
+    <aside class="control-card card">
+      <div class="card-heading"><div><h2>Registration Controls</h2></div></div>
+      <div id="layer-controls"></div>
+    </aside>
+  </section>
+</main>
+
+<dialog id="help-dialog">
+  <button id="close-help" class="dialog-close" aria-label="Close">×</button>
+  <p class="eyebrow">QUICK GUIDE</p>
+  <h2>Manual alignment</h2>
+  <ol>
+    <li>Select mRNA or TAPS as the active layer.</li>
+    <li>The inactive moving modality is hidden automatically.</li>
+    <li>Use the row/column controls, arrow keys, or drag the overlay to translate the moving image.</li>
+    <li>Drag the overlay for free translation. Hold Space while dragging to pan the view.</li>
+    <li>Adjust rotation and opacity as needed.</li>
+    <li>Export row/column hires-pixel offsets and rotation as JSON.</li>
+  </ol>
+</dialog>
+
+<script>
+"use strict";
+window.REGISTRATION_DATA = null;
+const layers = window.REGISTRATION_DATA;
+if(!Array.isArray(layers)||layers.length!==3)throw new Error("Missing registration images");
+
+const reference=layers.find((layer)=>layer.id==="taps_beta");
+const movingLayers=layers.filter((layer)=>layer!==reference);
+const canvas = document.getElementById("result-canvas");
+const canvasWrap = canvas.parentElement;
+const hud = document.getElementById("hud");
+const activeSelect = document.getElementById("active-layer");
+const storageKey = "dbitm-ssdna-spatialalign-v5";
+const viewState = {zoom:1,panX:0,panY:0};
+let activeId = "mrna";
+let drag = null;
+let spaceDown = false;
+
+function initialState(layer){return{rowOffset:0,colOffset:0,rotation:0,opacity:layer===reference?.82:.62};}
+for(const layer of layers){
+  layer.imageObject=new Image();
+  layer.state=initialState(layer);
+  layer.imageObject.onload=draw;
+  layer.imageObject.src=layer.image;
+}
+restore();
+updateActiveView();
+buildControls();
+
+function affineMatrix(layer){
+  if(layer===reference)return{a:1,b:0,c:0,d:1,tx:0,ty:0};
+  const radians=layer.state.rotation*Math.PI/180,cosine=Math.cos(radians),sine=Math.sin(radians);
+  const a=cosine,c=-sine,b=sine,d=cosine;
+  const centerX=layer.hiresWidth/2,centerY=layer.hiresHeight/2;
+  const dx=layer.state.colOffset,dy=layer.state.rowOffset;
+  return{a,b,c,d,tx:centerX+dx-a*centerX-c*centerY,ty:centerY+dy-b*centerX-d*centerY};
+}
+
+function getView(width,height){
+  const worldWidth=reference.hiresWidth,worldHeight=reference.hiresHeight;
+  const padding=24,fit=Math.min((width-2*padding)/worldWidth,(height-2*padding)/worldHeight),scale=fit*viewState.zoom;
+  return{scale,x:(width-worldWidth*scale)/2+viewState.panX,y:(height-worldHeight*scale)/2+viewState.panY,worldWidth,worldHeight};
+}
+
+function render(target,width,height,pixelRatio){
+  target.width=Math.round(width*pixelRatio);target.height=Math.round(height*pixelRatio);
+  const context=target.getContext("2d"),view=getView(width,height);
+  context.setTransform(pixelRatio,0,0,pixelRatio,0,0);context.fillStyle="#eef2f6";context.fillRect(0,0,width,height);
+  const active=movingLayers.find((layer)=>layer.id===activeId);
+  for(const layer of [reference,active]){
+    if(!layer.imageObject.complete)continue;
+    const transform=affineMatrix(layer),scale=view.scale;
+    context.save();context.globalAlpha=layer.state.opacity;
+    context.setTransform(pixelRatio*scale*transform.a,pixelRatio*scale*transform.b,pixelRatio*scale*transform.c,pixelRatio*scale*transform.d,pixelRatio*(view.x+scale*transform.tx),pixelRatio*(view.y+scale*transform.ty));
+    context.drawImage(layer.imageObject,0,0,layer.hiresWidth,layer.hiresHeight);context.restore();
+  }
+  context.setTransform(pixelRatio,0,0,pixelRatio,0,0);context.strokeStyle="#93a1b355";context.strokeRect(.5,.5,width-1,height-1);
+}
+
+function draw(){
+  render(canvas,canvasWrap.clientWidth,canvasWrap.clientHeight,window.devicePixelRatio||1);
+  const active=movingLayers.find((layer)=>layer.id===activeId);
+  hud.textContent=`Active: ${active.label} · Row ${active.state.rowOffset.toFixed(0)} hires px · Col ${active.state.colOffset.toFixed(0)} hires px · Rotation ${active.state.rotation.toFixed(1)} deg`;
+  document.getElementById("zoom-value").textContent=`${Math.round(viewState.zoom*100)}%`;
+}
+
+function numericControl(label,key,min,max,step,value){return`<label>${label}</label><input data-key="${key}" type="range" min="${min}" max="${max}" step="${step}" value="${value}"><input data-key="${key}" data-value="${key}" type="number" min="${min}" max="${max}" step="${step}" value="${value}">`;}
+
+function updateActiveView(){
+  const active=movingLayers.find((layer)=>layer.id===activeId);
+  document.getElementById("overlay-title").textContent=`${active.label} + ${reference.label}`;
+}
+
+function buildControls(){
+  const root=document.getElementById("layer-controls");root.innerHTML="";
+  const active=movingLayers.find((layer)=>layer.id===activeId);
+  for(const layer of [active,reference]){
+    const fixed=layer===reference,section=document.createElement("section");section.className="layer";
+    const transforms=fixed?numericControl("Opacity","opacity",0,1,.01,layer.state.opacity):numericControl("Row offset (hires px)","rowOffset",-5000,5000,1,layer.state.rowOffset)+numericControl("Col offset (hires px)","colOffset",-5000,5000,1,layer.state.colOffset)+numericControl("Rotation (deg)","rotation",-180,180,.1,layer.state.rotation)+numericControl("Opacity","opacity",0,1,.01,layer.state.opacity);
+    section.innerHTML=`<div class="layer-head"><span class="dot ${layer.id==="mrna"?"mrna-dot":layer.id==="taps"?"taps-dot":"beta-dot"}"></span><strong>${layer.label} ssDNA${fixed?" (fixed)":""}</strong></div><div class="grid">${transforms}</div>${fixed?"":'<button class="reset-layer" data-reset>Reset current alignment</button>'}`;
+    section.querySelectorAll("[data-key]").forEach((input)=>input.addEventListener("input",()=>{const key=input.dataset.key;layer.state[key]=Number(input.value);const number=section.querySelector(`[data-value="${key}"]`);if(number&&input.type==="range")number.value=input.value;const range=section.querySelector(`input[type="range"][data-key="${key}"]`);if(range&&input.type==="number")range.value=input.value;persist();draw();}));
+    section.querySelector("[data-reset]")?.addEventListener("click",()=>{layer.state=initialState(layer);persist();buildControls();draw();});root.appendChild(section);
+  }
+}
+
+function persist(){localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(movingLayers.map((layer)=>[layer.id,layer.state]))));}
+function restore(){try{const saved=JSON.parse(localStorage.getItem(storageKey));if(saved)movingLayers.forEach((layer)=>{if(saved[layer.id])layer.state={...initialState(layer),...saved[layer.id]};});}catch(error){console.warn(error);}}
+function setZoom(value,anchor){
+  const oldView=getView(canvasWrap.clientWidth,canvasWrap.clientHeight),point=anchor||{x:canvasWrap.clientWidth/2,y:canvasWrap.clientHeight/2};
+  const worldX=(point.x-oldView.x)/oldView.scale,worldY=(point.y-oldView.y)/oldView.scale;
+  viewState.zoom=Math.min(8,Math.max(.2,value));
+  const next=getView(canvasWrap.clientWidth,canvasWrap.clientHeight);
+  viewState.panX+=point.x-(next.x+worldX*next.scale);viewState.panY+=point.y-(next.y+worldY*next.scale);draw();
+}
+function fitView(){viewState.zoom=1;viewState.panX=0;viewState.panY=0;draw();}
+
+canvas.addEventListener("wheel",(event)=>{event.preventDefault();const rect=canvas.getBoundingClientRect();setZoom(viewState.zoom*Math.exp(-event.deltaY*.0014),{x:event.clientX-rect.left,y:event.clientY-rect.top});},{passive:false});
+canvas.addEventListener("pointerdown",(event)=>{canvas.setPointerCapture(event.pointerId);const layer=movingLayers.find((item)=>item.id===activeId);drag=spaceDown?{mode:"pan",x:event.clientX,y:event.clientY,panX:viewState.panX,panY:viewState.panY}:{mode:"move",x:event.clientX,y:event.clientY,rowOffset:layer.state.rowOffset,colOffset:layer.state.colOffset};canvas.classList.add("dragging");});
+canvas.addEventListener("pointermove",(event)=>{if(!drag)return;if(drag.mode==="pan"){viewState.panX=drag.panX+event.clientX-drag.x;viewState.panY=drag.panY+event.clientY-drag.y;}else{const layer=movingLayers.find((item)=>item.id===activeId),view=getView(canvasWrap.clientWidth,canvasWrap.clientHeight);layer.state.colOffset=Math.round(drag.colOffset+(event.clientX-drag.x)/view.scale);layer.state.rowOffset=Math.round(drag.rowOffset+(event.clientY-drag.y)/view.scale);}draw();});
+function finishDrag(){if(drag?.mode==="move")persist();drag=null;canvas.classList.remove("dragging");buildControls();}
+canvas.addEventListener("pointerup",finishDrag);canvas.addEventListener("pointercancel",finishDrag);
+
+window.addEventListener("keydown",(event)=>{if(["INPUT","SELECT","TEXTAREA"].includes(document.activeElement?.tagName))return;if(event.code==="Space"){spaceDown=true;event.preventDefault();return;}const layer=movingLayers.find((item)=>item.id===activeId);if(event.key==="ArrowLeft")layer.state.colOffset-=1;else if(event.key==="ArrowRight")layer.state.colOffset+=1;else if(event.key==="ArrowUp")layer.state.rowOffset-=1;else if(event.key==="ArrowDown")layer.state.rowOffset+=1;else if(event.key==="+")return setZoom(viewState.zoom*1.25);else if(event.key==="-")return setZoom(viewState.zoom*.8);else return;event.preventDefault();persist();buildControls();draw();});
+window.addEventListener("keyup",(event)=>{if(event.code==="Space")spaceDown=false;});window.addEventListener("blur",()=>{spaceDown=false;});
+
+activeSelect.addEventListener("change",()=>{activeId=activeSelect.value;updateActiveView();buildControls();draw();});
+document.getElementById("zoom-in").addEventListener("click",()=>setZoom(viewState.zoom*1.25));
+document.getElementById("zoom-out").addEventListener("click",()=>setZoom(viewState.zoom*.8));
+document.getElementById("fit-view").addEventListener("click",fitView);
+document.getElementById("reset-all").addEventListener("click",()=>{layers.forEach((layer)=>{layer.state=initialState(layer);});localStorage.removeItem(storageKey);fitView();buildControls();});
+function download(name,content,type){const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([content],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);}
+function activeOffsets(){const layer=movingLayers.find((item)=>item.id===activeId);return{[`${layer.id}_to_${reference.id}`]:{row_offset_hires_pixels:layer.state.rowOffset,col_offset_hires_pixels:layer.state.colOffset,rotation_degrees:layer.state.rotation}};}
+document.getElementById("save-json").addEventListener("click",()=>{const pairName=`${activeId}-to-${reference.id.replace("_","-")}`;download(`${pairName}-hires-row-col-offsets-and-rotation.json`,JSON.stringify(activeOffsets(),null,2),"application/json");});
+const helpDialog=document.getElementById("help-dialog");document.getElementById("help-button").addEventListener("click",()=>helpDialog.showModal());document.getElementById("close-help").addEventListener("click",()=>helpDialog.close());helpDialog.addEventListener("click",(event)=>{if(event.target===helpDialog)helpDialog.close();});
+new ResizeObserver(draw).observe(canvasWrap);draw();
+</script>
+</body>
+</html>
