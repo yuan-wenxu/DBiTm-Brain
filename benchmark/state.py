@@ -456,7 +456,7 @@ def plot_boxplots(
             "ytick.color": "#2B2B2B",
         }
     ):
-        figure, axis = plt.subplots(figsize=(12, 5))
+        figure, axis = plt.subplots(figsize=(8, 4))
         for sample_index, sample in enumerate(sample_order):
             color = SAMPLE_COLORS[sample]
             for state_position, state in enumerate(PLOT_STATE_ORDER, start=1):
