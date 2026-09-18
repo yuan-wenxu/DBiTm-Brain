@@ -190,16 +190,20 @@ def calculate_matches(
     result = pd.DataFrame(
         {
             "moving_barcode": moving["barcode"].to_numpy(),
-            "moving_array_row": moving["array_row"].to_numpy(dtype=int),
-            "moving_array_col": moving["array_col"].to_numpy(dtype=int),
+            "moving_array_row": moving["array_row"].map(
+                lambda value: f"{int(value):02d}"
+            ),
+            "moving_array_col": moving["array_col"].map(
+                lambda value: f"{int(value):02d}"
+            ),
             "registered_col_fullres": registered_coordinates[:, 0],
             "registered_row_fullres": registered_coordinates[:, 1],
             "nearest_taps_beta_barcode": nearest_reference["barcode"].to_numpy(),
-            "nearest_taps_beta_array_row": nearest_reference["array_row"].to_numpy(
-                dtype=int
+            "nearest_taps_beta_array_row": nearest_reference["array_row"].map(
+                lambda value: f"{int(value):02d}"
             ),
-            "nearest_taps_beta_array_col": nearest_reference["array_col"].to_numpy(
-                dtype=int
+            "nearest_taps_beta_array_col": nearest_reference["array_col"].map(
+                lambda value: f"{int(value):02d}"
             ),
             "col_difference_fullres_pixels": differences[:, 0],
             "row_difference_fullres_pixels": differences[:, 1],
@@ -223,6 +227,10 @@ def three_modality_overlap(
             "array_col": "taps_beta_array_col",
         }
     )
+    for column in ("taps_beta_array_row", "taps_beta_array_col"):
+        reference_table[column] = reference_table[column].map(
+            lambda value: f"{int(value):02d}"
+        )
     result = reference_table.merge(
         mrna_matches.loc[
             mrna_matches["overlap"],
@@ -401,7 +409,11 @@ def main() -> None:
                 index=False,
                 sep="\t",
             )
-        shared.to_csv(output_dir / "three-modality-overlap.tsv", index=False, sep="\t")
+        shared.to_csv(
+            output_dir / "three-modality-overlap.tsv",
+            index=False,
+            sep="\t",
+        )
 
         plot_overlap(
             output_dir / "spot-overlap-on-taps-beta.png",
