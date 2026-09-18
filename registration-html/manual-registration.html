@@ -120,7 +120,7 @@ dialog li { margin:8px 0; }
     </div>
   </section>
 
-  <div class="status" role="status"><span class="status-icon">i</span><span>Column offset is horizontal and row offset is vertical. Values use original hires-image pixels, not resized display pixels.</span></div>
+  <div class="status" role="status"><span class="status-icon">i</span><span>Column offset is horizontal and row offset is vertical. Values use original full-resolution image pixels, not resized display pixels.</span></div>
 
   <section class="lower-grid">
     <article class="result-card card">
@@ -148,7 +148,7 @@ dialog li { margin:8px 0; }
     <li>Use the row/column controls, arrow keys, or drag the overlay to translate the moving image.</li>
     <li>Drag the overlay for free translation. Hold Space while dragging to pan the view.</li>
     <li>Adjust rotation and opacity as needed.</li>
-    <li>Export row/column hires-pixel offsets and rotation as JSON.</li>
+    <li>Export row/column full-resolution-pixel offsets and rotation as JSON.</li>
   </ol>
 </dialog>
 
@@ -164,7 +164,7 @@ const canvas = document.getElementById("result-canvas");
 const canvasWrap = canvas.parentElement;
 const hud = document.getElementById("hud");
 const activeSelect = document.getElementById("active-layer");
-const storageKey = "dbitm-ssdna-spatialalign-v5";
+const storageKey = "dbitm-raw-ssdna-spatialalign";
 const viewState = {zoom:1,panX:0,panY:0};
 let activeId = "mrna";
 let drag = null;
@@ -185,13 +185,13 @@ function affineMatrix(layer){
   if(layer===reference)return{a:1,b:0,c:0,d:1,tx:0,ty:0};
   const radians=layer.state.rotation*Math.PI/180,cosine=Math.cos(radians),sine=Math.sin(radians);
   const a=cosine,c=-sine,b=sine,d=cosine;
-  const centerX=layer.hiresWidth/2,centerY=layer.hiresHeight/2;
+  const centerX=layer.fullresWidth/2,centerY=layer.fullresHeight/2;
   const dx=layer.state.colOffset,dy=layer.state.rowOffset;
   return{a,b,c,d,tx:centerX+dx-a*centerX-c*centerY,ty:centerY+dy-b*centerX-d*centerY};
 }
 
 function getView(width,height){
-  const worldWidth=reference.hiresWidth,worldHeight=reference.hiresHeight;
+  const worldWidth=reference.fullresWidth,worldHeight=reference.fullresHeight;
   const padding=24,fit=Math.min((width-2*padding)/worldWidth,(height-2*padding)/worldHeight),scale=fit*viewState.zoom;
   return{scale,x:(width-worldWidth*scale)/2+viewState.panX,y:(height-worldHeight*scale)/2+viewState.panY,worldWidth,worldHeight};
 }
@@ -206,7 +206,7 @@ function render(target,width,height,pixelRatio){
     const transform=affineMatrix(layer),scale=view.scale;
     context.save();context.globalAlpha=layer.state.opacity;
     context.setTransform(pixelRatio*scale*transform.a,pixelRatio*scale*transform.b,pixelRatio*scale*transform.c,pixelRatio*scale*transform.d,pixelRatio*(view.x+scale*transform.tx),pixelRatio*(view.y+scale*transform.ty));
-    context.drawImage(layer.imageObject,0,0,layer.hiresWidth,layer.hiresHeight);context.restore();
+    context.drawImage(layer.imageObject,0,0,layer.fullresWidth,layer.fullresHeight);context.restore();
   }
   context.setTransform(pixelRatio,0,0,pixelRatio,0,0);context.strokeStyle="#93a1b355";context.strokeRect(.5,.5,width-1,height-1);
 }
@@ -214,7 +214,7 @@ function render(target,width,height,pixelRatio){
 function draw(){
   render(canvas,canvasWrap.clientWidth,canvasWrap.clientHeight,window.devicePixelRatio||1);
   const active=movingLayers.find((layer)=>layer.id===activeId);
-  hud.textContent=`Active: ${active.label} · Row ${active.state.rowOffset.toFixed(0)} hires px · Col ${active.state.colOffset.toFixed(0)} hires px · Rotation ${active.state.rotation.toFixed(1)} deg`;
+  hud.textContent=`Active: ${active.label} · Row ${active.state.rowOffset.toFixed(0)} full-res px · Col ${active.state.colOffset.toFixed(0)} full-res px · Rotation ${active.state.rotation.toFixed(1)} deg`;
   document.getElementById("zoom-value").textContent=`${Math.round(viewState.zoom*100)}%`;
 }
 
@@ -230,7 +230,7 @@ function buildControls(){
   const active=movingLayers.find((layer)=>layer.id===activeId);
   for(const layer of [active,reference]){
     const fixed=layer===reference,section=document.createElement("section");section.className="layer";
-    const transforms=fixed?numericControl("Opacity","opacity",0,1,.01,layer.state.opacity):numericControl("Row offset (hires px)","rowOffset",-5000,5000,1,layer.state.rowOffset)+numericControl("Col offset (hires px)","colOffset",-5000,5000,1,layer.state.colOffset)+numericControl("Rotation (deg)","rotation",-180,180,.1,layer.state.rotation)+numericControl("Opacity","opacity",0,1,.01,layer.state.opacity);
+    const transforms=fixed?numericControl("Opacity","opacity",0,1,.01,layer.state.opacity):numericControl("Row offset (full-res px)","rowOffset",-5000,5000,1,layer.state.rowOffset)+numericControl("Col offset (full-res px)","colOffset",-5000,5000,1,layer.state.colOffset)+numericControl("Rotation (deg)","rotation",-180,180,.1,layer.state.rotation)+numericControl("Opacity","opacity",0,1,.01,layer.state.opacity);
     section.innerHTML=`<div class="layer-head"><span class="dot ${layer.id==="mrna"?"mrna-dot":layer.id==="taps"?"taps-dot":"beta-dot"}"></span><strong>${layer.label} ssDNA${fixed?" (fixed)":""}</strong></div><div class="grid">${transforms}</div>${fixed?"":'<button class="reset-layer" data-reset>Reset current alignment</button>'}`;
     section.querySelectorAll("[data-key]").forEach((input)=>input.addEventListener("input",()=>{const key=input.dataset.key;layer.state[key]=Number(input.value);const number=section.querySelector(`[data-value="${key}"]`);if(number&&input.type==="range")number.value=input.value;const range=section.querySelector(`input[type="range"][data-key="${key}"]`);if(range&&input.type==="number")range.value=input.value;persist();draw();}));
     section.querySelector("[data-reset]")?.addEventListener("click",()=>{layer.state=initialState(layer);persist();buildControls();draw();});root.appendChild(section);
@@ -263,8 +263,8 @@ document.getElementById("zoom-out").addEventListener("click",()=>setZoom(viewSta
 document.getElementById("fit-view").addEventListener("click",fitView);
 document.getElementById("reset-all").addEventListener("click",()=>{layers.forEach((layer)=>{layer.state=initialState(layer);});localStorage.removeItem(storageKey);fitView();buildControls();});
 function download(name,content,type){const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([content],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);}
-function activeOffsets(){const layer=movingLayers.find((item)=>item.id===activeId);return{[`${layer.id}_to_${reference.id}`]:{row_offset_hires_pixels:layer.state.rowOffset,col_offset_hires_pixels:layer.state.colOffset,rotation_degrees:layer.state.rotation}};}
-document.getElementById("save-json").addEventListener("click",()=>{const pairName=`${activeId}-to-${reference.id.replace("_","-")}`;download(`${pairName}-hires-row-col-offsets-and-rotation.json`,JSON.stringify(activeOffsets(),null,2),"application/json");});
+function activeOffsets(){const layer=movingLayers.find((item)=>item.id===activeId);return{[`${layer.id}_to_${reference.id}`]:{row_offset_fullres_pixels:layer.state.rowOffset,col_offset_fullres_pixels:layer.state.colOffset,rotation_degrees:layer.state.rotation}};}
+document.getElementById("save-json").addEventListener("click",()=>{const pairName=`${activeId}-to-${reference.id.replace("_","-")}`;download(`${pairName}-fullres-row-col-offsets-and-rotation.json`,JSON.stringify(activeOffsets(),null,2),"application/json");});
 const helpDialog=document.getElementById("help-dialog");document.getElementById("help-button").addEventListener("click",()=>helpDialog.showModal());document.getElementById("close-help").addEventListener("click",()=>helpDialog.close());helpDialog.addEventListener("click",(event)=>{if(event.target===helpDialog)helpDialog.close();});
 new ResizeObserver(draw).observe(canvasWrap);draw();
 </script>

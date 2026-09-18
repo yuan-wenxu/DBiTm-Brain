@@ -23,7 +23,7 @@ Use four-space indentation, type hints, `pathlib.Path`, descriptive snake_case n
 
 ## Visualization Conventions
 
-Use this cluster palette in order: `#A73030`, `#E64B35`, `#2F5597`, `#4DBBD5`, `#CC79A7`, `#7E57C2`, `#F0E442`, `#C5A3E0`, `#D6A500`, and `#FFE082`. Assign colors deterministically by numeric cluster ID so that the same cluster has the same color across UMAP and spatial plots. Use `#4DBBD5` for single-color QC distributions and the `#E64B35`–white–`#4DBBD5` diverging scheme for spatial QC metrics when applicable.
+Use this cluster palette in order: `#A73030`, `#E64B35`, `#2F5597`, `#4DBBD5`, `#CC79A7`, `#7E57C2`, `#C5A3E0`, `#D6A500`, `#FFE082`, `#2CA02C`, `#264653`, `#E7298A`, `#98DF8A`, and `#C49C94`. Assign colors deterministically by numeric cluster ID so that the same cluster has the same color across UMAP and spatial plots. Use `#4DBBD5` for single-color QC distributions and the `#E64B35`–white–`#4DBBD5` diverging scheme for spatial QC metrics when applicable.
 
 ## Testing Guidelines
 
