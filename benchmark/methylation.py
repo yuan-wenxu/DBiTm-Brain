@@ -339,7 +339,7 @@ def write_plot(rates: pd.DataFrame, sample_names: list[str], output_dir: Path) -
         np.arange(1, len(CONTEXT_COLUMNS) + 1),
         labels=list(CONTEXT_COLUMNS),
     )
-    figure.supylabel("Mean methylation per spot (%)", fontsize=10)
+    figure.supylabel("Methylation rate per spot (%)", fontsize=10)
 
     break_style = {
         "marker": [(-1, -0.5), (1, 0.5)],
@@ -383,7 +383,7 @@ def write_plot(rates: pd.DataFrame, sample_names: list[str], output_dir: Path) -
         handlelength=1.5,
         labelspacing=0.35,
     )
-    figure.suptitle("Methylation distributions", fontsize=12)
+    figure.suptitle("Methylation rate", fontsize=12)
     save_figure_atomic(
         figure, output_dir / "combined_methylation_rate_violin.png"
     )

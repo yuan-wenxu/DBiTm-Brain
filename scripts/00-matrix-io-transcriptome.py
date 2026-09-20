@@ -135,12 +135,7 @@ def build_anndata(paths: dict[str, Path], library_id: str) -> ad.AnnData:
     ].copy()
     obs.index = pd.Index(matched["barcode"], name="barcode")
     obs["in_tissue"] = obs["in_tissue"].astype(np.int8)
-    for column in (
-        "array_row",
-        "array_col",
-        "pxl_row_in_fullres",
-        "pxl_col_in_fullres",
-    ):
+    for column in ("pxl_row_in_fullres", "pxl_col_in_fullres"):
         obs[column] = obs[column].astype(np.int32)
 
     print("Reading and downsampling grayscale image ...", file=sys.stderr, flush=True)

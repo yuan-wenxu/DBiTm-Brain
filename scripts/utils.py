@@ -56,19 +56,35 @@ POSITION_COLUMNS = (
 
 
 def read_positions(path: Path) -> pd.DataFrame:
-    positions = pd.read_csv(path, sep="\t", compression="gzip", dtype=str)
+    positions = pd.read_csv(
+        path,
+        sep="\t",
+        compression="gzip",
+        dtype=str,
+        keep_default_na=False,
+    )
     missing = [column for column in POSITION_COLUMNS if column not in positions.columns]
     if missing:
         raise ValueError(
             f"Missing position column(s) in {path}: {', '.join(missing)}"
         )
 
-    integer_columns = POSITION_COLUMNS[1:]
+    integer_columns = (
+        "in_tissue",
+        "pxl_row_in_fullres",
+        "pxl_col_in_fullres",
+    )
     for column in integer_columns:
         try:
             positions[column] = pd.to_numeric(
                 positions[column], errors="raise", downcast="integer"
             )
+        except (TypeError, ValueError) as error:
+            raise ValueError(f"Position column {column!r} is not integer-valued") from error
+
+    for column in ("array_row", "array_col"):
+        try:
+            pd.to_numeric(positions[column], errors="raise", downcast="integer")
         except (TypeError, ValueError) as error:
             raise ValueError(f"Position column {column!r} is not integer-valued") from error
 

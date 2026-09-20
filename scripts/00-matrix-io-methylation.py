@@ -28,10 +28,12 @@ MATRIX_DIRECTORIES = {
     "residuals": "mean_shrunken_residuals",
     "methylation": "methylation_fractions",
 }
-INPUT_FILENAMES = {
+MATRIX_FILENAMES = {
     "matrix": "matrix.mtx.gz",
     "features": "features.tsv.gz",
     "barcodes": "barcodes.tsv.gz",
+}
+SPATIAL_FILENAMES = {
     "positions": "tissue_positions.tsv.gz",
     "image": "tissue_raw_image.png",
 }
@@ -50,7 +52,8 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help=(
             "Directory containing mean_shrunken_residuals/ and "
-            "methylation_fractions/."
+            "methylation_fractions/ matrix folders plus tissue_positions.tsv.gz "
+            "and tissue_raw_image.png."
         ),
     )
     parser.add_argument(
@@ -63,7 +66,7 @@ def parse_args() -> argparse.Namespace:
         "--library-id",
         required=True,
         help="Library identifier used as the key in adata.uns['spatial']." \
-        "taps, and taps-beta libraries are all valid identifiers.",
+        "5mc, 5hmc, taps, and taps-beta libraries are all valid identifiers.",
     )
     return parser.parse_args()
 
@@ -76,9 +79,12 @@ def resolve_inputs(input_dir: Path) -> dict[str, dict[str, Path]]:
     paths = {
         layer: {
             key: input_dir / directory / filename
-            for key, filename in INPUT_FILENAMES.items()
+            for key, filename in MATRIX_FILENAMES.items()
         }
         for layer, directory in MATRIX_DIRECTORIES.items()
+    }
+    paths["spatial"] = {
+        key: input_dir / filename for key, filename in SPATIAL_FILENAMES.items()
     }
     missing = [
         path
@@ -115,7 +121,14 @@ def match_positions(matrix_barcodes: list[str], positions: pd.DataFrame) -> pd.D
     if len(coordinates) != len(set(coordinates)):
         raise ValueError("Matrix barcodes contain duplicate row/column coordinates")
 
-    coordinate_lookup = positions.set_index(["array_row", "array_col"], drop=False)
+    coordinate_lookup = positions.copy()
+    coordinate_lookup.index = pd.MultiIndex.from_arrays(
+        [
+            pd.to_numeric(coordinate_lookup["array_row"]),
+            pd.to_numeric(coordinate_lookup["array_col"]),
+        ],
+        names=["array_row", "array_col"],
+    )
     missing = [
         (barcode, coordinate)
         for barcode, coordinate in zip(matrix_barcodes, coordinates, strict=True)
@@ -161,19 +174,20 @@ def read_matrix(
 def build_anndata(
     paths: dict[str, dict[str, Path]], library_id: str
 ) -> ad.AnnData:
-    shared_paths = paths["residuals"]
-    feature_frame = read_features(shared_paths["features"])
-    matrix_barcodes = read_nonempty_lines(shared_paths["barcodes"])
+    residual_paths = paths["residuals"]
+    feature_frame = read_features(residual_paths["features"])
+    matrix_barcodes = read_nonempty_lines(residual_paths["barcodes"])
     if len(matrix_barcodes) != len(set(matrix_barcodes)):
-        raise ValueError(f"Duplicate matrix barcode in {shared_paths['barcodes']}")
+        raise ValueError(f"Duplicate matrix barcode in {residual_paths['barcodes']}")
 
     expected_shape = (len(feature_frame), len(matrix_barcodes))
     matrices = {
-        layer: read_matrix(layer_paths["matrix"], expected_shape, layer)
-        for layer, layer_paths in paths.items()
+        layer: read_matrix(paths[layer]["matrix"], expected_shape, layer)
+        for layer in MATRIX_DIRECTORIES
     }
 
-    all_positions = read_positions(shared_paths["positions"])
+    spatial_paths = paths["spatial"]
+    all_positions = read_positions(spatial_paths["positions"])
     matched = match_positions(matrix_barcodes, all_positions)
 
     obs = matched[
@@ -187,16 +201,11 @@ def build_anndata(
     ].copy()
     obs.index = pd.Index(matched["barcode"], name="barcode")
     obs["in_tissue"] = obs["in_tissue"].astype(np.int8)
-    for column in (
-        "array_row",
-        "array_col",
-        "pxl_row_in_fullres",
-        "pxl_col_in_fullres",
-    ):
+    for column in ("pxl_row_in_fullres", "pxl_col_in_fullres"):
         obs[column] = obs[column].astype(np.int32)
 
     print("Reading and downsampling grayscale image ...", file=sys.stderr, flush=True)
-    image = read_image(shared_paths["image"], IMAGE_SCALE_FACTOR)
+    image = read_image(spatial_paths["image"], IMAGE_SCALE_FACTOR)
 
     adata = ad.AnnData(
         X=matrices["residuals"],
