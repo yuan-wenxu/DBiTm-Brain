@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Filter residuals and methylation using coverage in the residual matrix."""
+"""Filter residuals and methylation using an explicit observed-value mask."""
 
 from __future__ import annotations
 
@@ -18,6 +18,7 @@ from utils import in_tissue_mask
 
 
 METHYLATION_LAYER = "methylation"
+VALUE_MASK_LAYER = "value_mask"
 
 
 def parse_args() -> argparse.Namespace:
@@ -32,7 +33,7 @@ def parse_args() -> argparse.Namespace:
         "--min-vmrs-per-spot",
         type=int,
         default=1000,
-        help="Minimum nonzero VMRs required to keep a spot (default: 1000).",
+        help="Minimum observed VMRs required to keep a spot (default: 1000).",
     )
     parser.add_argument(
         "--min-spots-per-vmr",
@@ -49,10 +50,13 @@ def parse_args() -> argparse.Namespace:
 
 
 def observation_mask(matrix: sparse.spmatrix) -> sparse.csr_matrix:
-    """Represent finite, nonzero residuals as observed entries."""
+    """Validate and normalize the explicit observed-value mask."""
     observed = matrix.tocsr(copy=True)
+    observed.sum_duplicates()
     if not np.isfinite(observed.data).all():
-        raise ValueError("The H5AD matrix contains non-finite residuals")
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer contains non-finite values")
+    if not np.isin(observed.data, (0, 1)).all():
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer must contain only 0 and 1")
     observed.eliminate_zeros()
     observed.data = np.ones(observed.nnz, dtype=np.uint8)
     return observed
@@ -76,8 +80,12 @@ def filter_anndata(
         raise ValueError(f"The input H5AD is missing layer {METHYLATION_LAYER!r}")
     if not sparse.issparse(adata.layers[METHYLATION_LAYER]):
         raise ValueError(f"The {METHYLATION_LAYER!r} layer must be sparse")
+    if VALUE_MASK_LAYER not in adata.layers:
+        raise ValueError(f"The input H5AD is missing layer {VALUE_MASK_LAYER!r}")
+    if not sparse.issparse(adata.layers[VALUE_MASK_LAYER]):
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer must be sparse")
 
-    observed = observation_mask(adata.X)
+    observed = observation_mask(adata.layers[VALUE_MASK_LAYER])
     tissue_spots = in_tissue_mask(adata)
     if not tissue_spots.any():
         raise ValueError("The input H5AD contains no spots marked as in tissue")

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Cluster spots from the residual matrix in X of a filtered VMR H5AD."""
+"""Cluster spots from masked residuals in a filtered VMR H5AD."""
 
 from __future__ import annotations
 
@@ -45,6 +45,7 @@ CLUSTER_COLORS = (
     "#98DF8A",
     "#C49C94",
 )
+VALUE_MASK_LAYER = "value_mask"
 
 
 def parse_args() -> argparse.Namespace:
@@ -137,19 +138,50 @@ def parse_args() -> argparse.Namespace:
     return args
 
 
-def load_residuals(matrix: sparse.spmatrix) -> np.ndarray:
-    """Convert sparse residuals to dense float32, with absent entries as NaN."""
+def load_residuals(
+    matrix: sparse.spmatrix,
+    value_mask: sparse.spmatrix,
+) -> np.ndarray:
+    """Convert residuals to dense float32 using the explicit observation mask."""
     if not sparse.issparse(matrix):
         raise ValueError("The residual matrix in X must be sparse")
+    if not sparse.issparse(value_mask):
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer must be sparse")
+    if value_mask.shape != matrix.shape:
+        raise ValueError(
+            f"The {VALUE_MASK_LAYER!r} layer shape {value_mask.shape} does not "
+            f"match the residual matrix shape {matrix.shape}"
+        )
+
     residuals = matrix.tocsr(copy=True)
     residuals.sum_duplicates()
     if not np.isfinite(residuals.data).all():
         raise ValueError("The H5AD matrix contains non-finite residuals")
     residuals.eliminate_zeros()
-    coordinates = residuals.tocoo()
+
+    observed = value_mask.tocsr(copy=True)
+    observed.sum_duplicates()
+    if not np.isfinite(observed.data).all():
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer contains non-finite values")
+    if not np.isin(observed.data, (0, 1)).all():
+        raise ValueError(f"The {VALUE_MASK_LAYER!r} layer must contain only 0 and 1")
+    observed.eliminate_zeros()
+
     values = np.full(residuals.shape, np.nan, dtype=np.float32)
-    values[coordinates.row, coordinates.col] = coordinates.data.astype(
-        np.float32, copy=False
+    observed_coordinates = observed.tocoo()
+    values[observed_coordinates.row, observed_coordinates.col] = 0.0
+
+    residual_coordinates = residuals.tocoo()
+    outside_mask = np.isnan(
+        values[residual_coordinates.row, residual_coordinates.col]
+    )
+    if outside_mask.any():
+        raise ValueError(
+            f"The residual matrix contains {int(outside_mask.sum()):,} nonzero "
+            f"entries outside the {VALUE_MASK_LAYER!r} layer"
+        )
+    values[residual_coordinates.row, residual_coordinates.col] = (
+        residual_coordinates.data.astype(np.float32, copy=False)
     )
     return values
 
@@ -581,7 +613,9 @@ def main() -> None:
         image, x, y, hires_pixel_size_um = spatial_plot_data(adata)
         array_rows = adata.obs["array_row"].to_numpy(dtype=float)
         array_columns = adata.obs["array_col"].to_numpy(dtype=float)
-        values = load_residuals(adata.X)
+        if VALUE_MASK_LAYER not in adata.layers:
+            raise ValueError(f"The input H5AD is missing layer {VALUE_MASK_LAYER!r}")
+        values = load_residuals(adata.X, adata.layers[VALUE_MASK_LAYER])
         values, history = iterative_pca_impute(
             values,
             args.n_components,

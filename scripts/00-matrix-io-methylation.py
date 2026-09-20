@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Combine DBiT residual and methylation Matrix Market data in one AnnData."""
+"""Combine DBiT residual, methylation, and value-mask data in one AnnData."""
 
 from __future__ import annotations
 
@@ -33,6 +33,8 @@ MATRIX_FILENAMES = {
     "features": "features.tsv.gz",
     "barcodes": "barcodes.tsv.gz",
 }
+VALUE_MASK_FILENAME = "mask.mtx.gz"
+VALUE_MASK_LAYER = "value_mask"
 SPATIAL_FILENAMES = {
     "positions": "tissue_positions.tsv.gz",
     "image": "tissue_raw_image.png",
@@ -42,8 +44,8 @@ SPATIAL_FILENAMES = {
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Read residual and methylation sparse-matrix folders and write one "
-            "h5ad containing both matrices, shared positions, and a shared image."
+            "Read residual, methylation, and observed-value mask sparse matrices "
+            "and write one h5ad with shared positions and a shared image."
         )
     )
     parser.add_argument(
@@ -52,8 +54,9 @@ def parse_args() -> argparse.Namespace:
         required=True,
         help=(
             "Directory containing mean_shrunken_residuals/ and "
-            "methylation_fractions/ matrix folders plus tissue_positions.tsv.gz "
-            "and tissue_raw_image.png."
+            "methylation_fractions/ matrix folders; the residual folder must "
+            "also contain mask.mtx.gz. The directory must contain "
+            "tissue_positions.tsv.gz and tissue_raw_image.png."
         ),
     )
     parser.add_argument(
@@ -83,6 +86,9 @@ def resolve_inputs(input_dir: Path) -> dict[str, dict[str, Path]]:
         }
         for layer, directory in MATRIX_DIRECTORIES.items()
     }
+    paths["residuals"]["mask"] = (
+        input_dir / MATRIX_DIRECTORIES["residuals"] / VALUE_MASK_FILENAME
+    )
     paths["spatial"] = {
         key: input_dir / filename for key, filename in SPATIAL_FILENAMES.items()
     }
@@ -171,6 +177,29 @@ def read_matrix(
     return matrix
 
 
+def read_value_mask(
+    path: Path,
+    expected_shape: tuple[int, int],
+) -> sparse.csr_matrix:
+    """Read the explicit observed-value mask as a spots-by-features matrix."""
+    print("Reading observed-value mask ...", file=sys.stderr, flush=True)
+    matrix = mmread(path, spmatrix=True)
+    if not sparse.issparse(matrix):
+        matrix = sparse.coo_matrix(matrix)
+    if matrix.shape != expected_shape:
+        raise ValueError(
+            f"value mask shape {matrix.shape} does not match "
+            f"{expected_shape[0]} features x {expected_shape[1]} barcodes"
+        )
+    matrix.sum_duplicates()
+    if not np.isfinite(matrix.data).all():
+        raise ValueError("value mask contains non-finite values")
+    if not np.isin(matrix.data, (0, 1)).all():
+        raise ValueError("value mask must contain only 0 and 1")
+    matrix.eliminate_zeros()
+    return matrix.astype(bool).transpose().tocsr()
+
+
 def build_anndata(
     paths: dict[str, dict[str, Path]], library_id: str
 ) -> ad.AnnData:
@@ -185,6 +214,7 @@ def build_anndata(
         layer: read_matrix(paths[layer]["matrix"], expected_shape, layer)
         for layer in MATRIX_DIRECTORIES
     }
+    value_mask = read_value_mask(residual_paths["mask"], expected_shape)
 
     spatial_paths = paths["spatial"]
     all_positions = read_positions(spatial_paths["positions"])
@@ -211,11 +241,17 @@ def build_anndata(
         X=matrices["residuals"],
         obs=obs,
         var=feature_frame,
-        layers={"methylation": matrices["methylation"]},
+        layers={
+            "methylation": matrices["methylation"],
+            VALUE_MASK_LAYER: value_mask,
+        },
     )
     adata.uns["matrix_sources"] = {
         "X": MATRIX_DIRECTORIES["residuals"],
         "methylation": MATRIX_DIRECTORIES["methylation"],
+        VALUE_MASK_LAYER: (
+            f"{MATRIX_DIRECTORIES['residuals']}/{VALUE_MASK_FILENAME}"
+        ),
     }
     adata.uns["spatial"] = {
         library_id: {
@@ -250,7 +286,7 @@ def main() -> None:
     print(
         f"Wrote {output.expanduser().resolve()} "
         f"({adata.n_obs:,} spots x {adata.n_vars:,} features; "
-        f"X residuals; layer methylation; "
+        f"X residuals; layers methylation and {VALUE_MASK_LAYER}; "
         f"image {image.shape[1]:,} x {image.shape[0]:,})"
     )
 
