@@ -22,7 +22,7 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
-from matplotlib.patches import Rectangle
+from matplotlib.patches import Patch, Rectangle
 
 from utils import spatial_plot_data
 
@@ -313,6 +313,15 @@ def cluster_colors(cluster_count: int) -> list[tuple[float, float, float, float]
     return colors
 
 
+def cluster_legend(
+    colors: list[tuple[float, float, float, float]],
+) -> list[Patch]:
+    return [
+        Patch(facecolor=color, edgecolor="none", label=f"D{index}")
+        for index, color in enumerate(colors)
+    ]
+
+
 def add_cluster_squares(
     axis: plt.Axes,
     clusters: np.ndarray,
@@ -377,13 +386,31 @@ def plot_umap(
 ) -> None:
     colors = cluster_colors(int(clusters.max()) + 1)
     color_values = [colors[item] for item in clusters]
-    figure, axis = plt.subplots(figsize=(5, 4))
+    figure, axis = plt.subplots(figsize=(6, 5))
     axis.scatter(
         embedding[:, 0], embedding[:, 1], c=color_values, s=13, linewidths=0
     )
+    for cluster in range(len(colors)):
+        points = embedding[clusters == cluster]
+        axis.text(
+            np.median(points[:, 0]),
+            np.median(points[:, 1]),
+            f"D{cluster}",
+            ha="center",
+            va="center",
+            fontsize=9,
+            fontweight="bold",
+        )
     axis.set_title("UMAP of VMR residuals", fontsize=12)
     axis.set_xlabel("UMAP1", fontsize=10)
     axis.set_ylabel("UMAP2", fontsize=10)
+    axis.legend(
+        handles=cluster_legend(colors),
+        title="Cluster",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        frameon=False,
+    )
     figure.tight_layout()
     figure.savefig(path, dpi=300, bbox_inches="tight")
     plt.close(figure)
@@ -398,6 +425,7 @@ def plot_spatial(
     hires_pixel_size_um: float,
     spot_size_um: float,
 ) -> None:
+    colors = cluster_colors(int(clusters.max()) + 1)
     figure, axis = plt.subplots(figsize=(7, 6))
     axis.imshow(image, cmap="gray", origin="upper")
 
@@ -408,6 +436,13 @@ def plot_spatial(
     axis.set_aspect("equal")
     axis.set_title("Leiden clusters on tissue image", fontsize=12)
     add_scale_bar(axis, image.shape[1], image.shape[0], hires_pixel_size_um)
+    axis.legend(
+        handles=cluster_legend(colors),
+        title="Cluster",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        frameon=False,
+    )
     axis.set_axis_off()
 
     figure.tight_layout()
@@ -425,6 +460,7 @@ def plot_spatial_cropped(
     spot_size_um: float,
     crop_margin_um: float,
 ) -> None:
+    colors = cluster_colors(int(clusters.max()) + 1)
     spot_size_pixels = spot_size_um / hires_pixel_size_um
     margin_pixels = crop_margin_um / hires_pixel_size_um
     half_size = spot_size_pixels / 2
@@ -446,6 +482,13 @@ def plot_spatial_cropped(
         bottom - top,
         hires_pixel_size_um,
     )
+    axis.legend(
+        handles=cluster_legend(colors),
+        title="Cluster",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        frameon=False,
+    )
     axis.set_axis_off()
     figure.tight_layout()
     figure.savefig(path, dpi=300, bbox_inches="tight")
@@ -458,6 +501,7 @@ def plot_spot_positions(
     array_rows: np.ndarray,
     array_columns: np.ndarray,
 ) -> None:
+    colors = cluster_colors(int(clusters.max()) + 1)
     figure, axis = plt.subplots(figsize=(6, 5))
     add_cluster_squares(axis, clusters, array_columns, array_rows, 0.8)
     padding = 0.75
@@ -465,6 +509,13 @@ def plot_spot_positions(
     axis.set_ylim(array_rows.max() + padding, array_rows.min() - padding)
     axis.set_aspect("equal")
     axis.set_title("Leiden clusters by array position", fontsize=12)
+    axis.legend(
+        handles=cluster_legend(colors),
+        title="Cluster",
+        bbox_to_anchor=(1.02, 1),
+        loc="upper left",
+        frameon=False,
+    )
     axis.set_axis_off()
     figure.tight_layout()
     figure.savefig(path, dpi=300, bbox_inches="tight")
