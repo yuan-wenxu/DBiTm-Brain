@@ -234,8 +234,8 @@ def spot_pair_table(matches: pd.DataFrame, moving_id: str) -> pd.DataFrame:
         ["moving_spot_id", "nearest_taps_beta_spot_id"],
     ].rename(
         columns={
-            "moving_spot_id": f"{moving_id}_cell",
-            "nearest_taps_beta_spot_id": "beta_cell",
+            "moving_spot_id": f"{moving_id.replace('_', '-')}-cell",
+            "nearest_taps_beta_spot_id": "beta-cell",
         }
     ).reset_index(drop=True)
 
