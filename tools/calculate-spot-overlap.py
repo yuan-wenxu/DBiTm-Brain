@@ -160,6 +160,13 @@ def register_coordinates(
     return np.column_stack((registered_col, registered_row))
 
 
+def spot_ids(rows: pd.Series, columns: pd.Series) -> pd.Series:
+    """Format numeric array coordinates as the pipeline's row_column spot ID."""
+    row_ids = rows.map(lambda value: f"{int(value):02d}")
+    column_ids = columns.map(lambda value: f"{int(value):02d}")
+    return row_ids + "_" + column_ids
+
+
 def calculate_matches(
     moving: pd.DataFrame,
     registered_coordinates: np.ndarray,
@@ -187,9 +194,15 @@ def calculate_matches(
         )
 
     nearest_reference = reference.iloc[nearest_indices].reset_index(drop=True)
+    moving_spot_ids = spot_ids(moving["array_row"], moving["array_col"])
+    reference_spot_ids = spot_ids(
+        nearest_reference["array_row"],
+        nearest_reference["array_col"],
+    )
     result = pd.DataFrame(
         {
             "moving_barcode": moving["barcode"].to_numpy(),
+            "moving_spot_id": moving_spot_ids.to_numpy(),
             "moving_array_row": moving["array_row"].map(
                 lambda value: f"{int(value):02d}"
             ),
@@ -199,6 +212,7 @@ def calculate_matches(
             "registered_col_fullres": registered_coordinates[:, 0],
             "registered_row_fullres": registered_coordinates[:, 1],
             "nearest_taps_beta_barcode": nearest_reference["barcode"].to_numpy(),
+            "nearest_taps_beta_spot_id": reference_spot_ids.to_numpy(),
             "nearest_taps_beta_array_row": nearest_reference["array_row"].map(
                 lambda value: f"{int(value):02d}"
             ),
@@ -211,6 +225,19 @@ def calculate_matches(
         }
     )
     return result
+
+
+def spot_pair_table(matches: pd.DataFrame, moving_id: str) -> pd.DataFrame:
+    """Return overlap-only spot pairs using MethSCAn-compatible cell IDs."""
+    return matches.loc[
+        matches["overlap"],
+        ["moving_spot_id", "nearest_taps_beta_spot_id"],
+    ].rename(
+        columns={
+            "moving_spot_id": f"{moving_id}_cell",
+            "nearest_taps_beta_spot_id": "beta_cell",
+        }
+    ).reset_index(drop=True)
 
 
 def three_modality_overlap(
@@ -406,6 +433,11 @@ def main() -> None:
             file_id = modality_id.replace("_", "-")
             table.to_csv(
                 output_dir / f"{file_id}-to-taps-beta-nearest-spots.tsv",
+                index=False,
+                sep="\t",
+            )
+            spot_pair_table(table, modality_id).to_csv(
+                output_dir / f"{file_id}-to-taps-beta-spot-pairs.tsv",
                 index=False,
                 sep="\t",
             )
