@@ -2,33 +2,36 @@
 
 ## Project Structure & Module Organization
 
-The repository contains analysis scripts rather than an installable application. Python workflow stages live in `scripts-python/` and use numeric prefixes to show execution order. Equivalent or supporting Seurat workflows are in `scripts-r/`. Performance and data-summary utilities are kept in `benchmark/`. Dependencies and environments are defined by `pixi.toml` and the generated `pixi.lock`. Large sequencing inputs, H5AD files, plots, and analysis results should remain outside the repository.
+Primary workflows live in `scripts/`, reusable utilities in `tools/`, and standalone analyses in `benchmark/`. Preserve numeric prefixes on ordered workflows and include the modality in filenames when relevant. Keep large data files, images, plots, and generated results outside Git.
 
-## Build, Test, and Development Commands
+## Environment & Dependency Management
 
-Use Pixi for every Python and R command:
+Work in the Linux container with Bash and Linux-style paths. For Windows-mounted data under `/mnt/...`, account for slower I/O, permissions, filename case, and line-ending differences.
+
+Pixi is the supported environment and dependency manager. Inspect `pixi.toml` and its tasks before running commands:
 
 ```bash
 pixi install
-pixi run python scripts-python/00-matrix-io-transcriptome.py --help
-pixi run python scripts-python/02-matrix-qc-transcriptome.py input.h5ad
-pixi run Rscript scripts-r/00-loadmRNA.R
+pixi run python path/to/script.py --help
+pixi add <package>
 ```
 
-There is no compilation step and no predefined Pixi task. Add dependencies with `pixi add <package>`; do not manually edit `pixi.lock` or install packages with system-level `pip`, Conda, or R.
+Run project tools through `pixi run`. Do not use system-level package managers or runtimes, and never edit `pixi.lock` manually. Do not assume `test` or `lint` tasks exist.
 
 ## Coding Style & Naming Conventions
 
-Use four-space indentation, type hints, `pathlib.Path`, descriptive snake_case names, and small single-purpose functions in Python. Keep command-line parsing in `parse_args()` and execution in `main()`. Follow existing tidyverse/Seurat conventions in R, using `<-` for assignment. Preserve numeric script prefixes and include the modality in filenames, such as `02-matrix-qc-methylation.py`. Avoid unrelated formatting changes.
+Use four-space indentation, type hints, `pathlib.Path`, descriptive `snake_case` names, and uppercase module constants. Keep CLI parsing in `parse_args()` and execution in `main()`. Prefer small, single-purpose functions and avoid unrelated formatting or refactoring. No formatter or linter is currently configured.
 
 ## Visualization Conventions
 
-Use this cluster palette in order: `#A73030`, `#E64B35`, `#2F5597`, `#4DBBD5`, `#CC79A7`, `#7E57C2`, `#C5A3E0`, `#D6A500`, `#FFE082`, `#2CA02C`, `#264653`, `#E7298A`, `#98DF8A`, and `#C49C94`. Assign colors deterministically by numeric cluster ID so that the same cluster has the same color across UMAP and spatial plots. Use `#4DBBD5` for single-color QC distributions and the `#E64B35`–white–`#4DBBD5` diverging scheme for spatial QC metrics when applicable.
+Use this cluster palette in order: `#A73030`, `#E64B35`, `#2F5597`, `#4DBBD5`, `#CC79A7`, `#7E57C2`, `#C5A3E0`, `#D6A500`, `#FFE082`, `#2CA02C`, `#264653`, `#E7298A`, `#98DF8A`, `#C49C94`. Assign colors deterministically by numeric cluster ID so UMAP and spatial plots remain consistent. Use `#4DBBD5` for single-color QC distributions and `#E64B35`–white–`#4DBBD5` for diverging spatial QC metrics.
 
 ## Testing Guidelines
 
-No automated test framework or coverage threshold is currently configured. For significant changes, create a minimal synthetic dataset under `/tmp`, run only the affected workflow through `pixi run`, and verify matrix dimensions, required AnnData/Seurat fields, plots, and output paths. Run each modified CLI with `--help` and use `git diff --check` before submission. Remove all temporary test files after collecting results.
+There is no automated test suite or coverage requirement. For significant changes, create minimal synthetic data under `/tmp` and run only the affected workflow through `pixi run`. Verify dimensions, required fields, output paths, and plots as applicable. Run modified CLIs with `--help` and `git diff --check`. Remove temporary artifacts afterward.
 
-## Commit & Pull Request Guidelines
+## Git, Commits & Pull Requests
 
-Recent history follows Conventional Commits: `feat(qc): ...`, `fix(io): ...`, or `refactor(vmr-analysis): ...`. Keep commits focused and use an imperative English summary. Pull requests should explain the scientific or pipeline change, list modified stages, provide exact validation commands, and note untested real-data cases. Include representative plot screenshots when visualization output changes, and link relevant issues or datasets without committing the data itself.
+Check `git status` and relevant diffs before editing. Preserve unrelated uncommitted work. Do not commit, push, rebase, rewrite history, delete branches, or run destructive Git commands unless explicitly requested.
+
+Write commit messages in English using Conventional Commits: `<type>(<scope>): <imperative summary>`, for example `fix(integration): align spot pair column names`. Common types are `feat`, `fix`, `refactor`, `test`, `docs`, `chore`, `perf`, and `style`. Keep each commit focused. Pull requests should explain the scientific or pipeline change, list affected files or stages, give exact validation commands, note untested real-data cases, link relevant issues or datasets, and include representative screenshots for visualization changes.
