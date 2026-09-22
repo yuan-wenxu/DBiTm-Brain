@@ -69,20 +69,20 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--n-neighbors",
         type=int,
-        default=20,
+        default=10,
         help="Multimodal neighbors used for WNN, Leiden, and UMAP (default: 20).",
     )
     parser.add_argument(
         "--n-candidate-neighbors",
         type=int,
-        default=200,
+        default=100,
         help="Per-modality candidates considered by WNN (default: 200).",
     )
     parser.add_argument(
         "--resolution",
         type=float,
-        default=0.4,
-        help="Resolution for joint Leiden clustering (default: 0.4).",
+        default=0.6,
+        help="Resolution for joint Leiden clustering (default: 1.0).",
     )
     parser.add_argument(
         "--umap-min-dist",
@@ -101,6 +101,11 @@ def parse_args() -> argparse.Namespace:
         type=int,
         default=42,
         help="Random seed for joint Leiden clustering and UMAP (default: 42).",
+    )
+    parser.add_argument(
+        "--overwrite",
+        action="store_true",
+        help="Replace stage-05 files in an existing output directory.",
     )
     args = parser.parse_args()
     if args.mrna_pcs < 1:
@@ -476,8 +481,12 @@ def write_shared_spot_table(
     table = pd.DataFrame(
         {
             "taps_beta_barcode": reference.obs_names.astype(str),
-            "array_row": reference.obs["array_row"].to_numpy(),
-            "array_col": reference.obs["array_col"].to_numpy(),
+            "array_row": reference.obs["array_row"].map(
+                lambda value: f"{int(value):02d}"
+            ).to_numpy(),
+            "array_col": reference.obs["array_col"].map(
+                lambda value: f"{int(value):02d}"
+            ).to_numpy(),
             "mrna_source_barcode": mdata.mod["mrna"].obs[
                 "source_barcode"
             ].to_numpy(),
@@ -489,24 +498,26 @@ def write_shared_spot_table(
             "wnn_leiden": joint.obs["wnn_leiden"].astype(str).to_numpy(),
         }
     )
-    table.to_csv(path, index=False)
+    table.to_csv(path, sep="\t", index=False)
 
 
 def main() -> None:
     args = parse_args()
     input_path = args.input.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
-    if output_dir.exists():
+    if output_dir.exists() and not args.overwrite:
         raise SystemExit(f"Error: output directory already exists: {output_dir}")
+    if output_dir.exists() and not output_dir.is_dir():
+        raise SystemExit(f"Error: output path is not a directory: {output_dir}")
 
     try:
         mdata = read_mudata(input_path)
         joint = cluster_joint_spots(mdata, args)
         add_wnn_results(mdata, joint)
 
-        output_dir.mkdir(parents=True)
+        output_dir.mkdir(parents=True, exist_ok=args.overwrite)
         write_mudata(mdata, output_dir / "wnn-clustered-multimodal.h5mu")
-        write_shared_spot_table(output_dir / "wnn-spots.csv", mdata, joint)
+        write_shared_spot_table(output_dir / "wnn-spots.tsv", mdata, joint)
         plot_joint_umap(output_dir / "wnn-umap.png", joint)
         plot_joint_spatial(
             output_dir / "wnn-clusters-on-taps-beta.png",
