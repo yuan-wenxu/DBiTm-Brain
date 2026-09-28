@@ -173,7 +173,7 @@ def main() -> None:
 
     output_dir = input_path.parent.parent / "filtered"
     output_path = output_dir / f"{input_path.stem}.filtered.h5ad"
-    figure_path = output_dir / f"{input_path.stem}.filter_distributions.png"
+    figure_path = output_dir / "filter_distributions.png"
     if output_path.exists():
         raise SystemExit(f"Output already exists: {output_path}")
     if figure_path.exists():

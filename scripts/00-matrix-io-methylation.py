@@ -246,13 +246,6 @@ def build_anndata(
             VALUE_MASK_LAYER: value_mask,
         },
     )
-    adata.uns["matrix_sources"] = {
-        "X": MATRIX_DIRECTORIES["residuals"],
-        "methylation": MATRIX_DIRECTORIES["methylation"],
-        VALUE_MASK_LAYER: (
-            f"{MATRIX_DIRECTORIES['residuals']}/{VALUE_MASK_FILENAME}"
-        ),
-    }
     adata.uns["spatial"] = {
         library_id: {
             "images": {"hires": image},

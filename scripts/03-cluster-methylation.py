@@ -216,6 +216,7 @@ def iterative_pca_impute(
             if not block_missing.any():
                 continue
             reconstruction = scores @ pca.components_[:, start:end]
+            reconstruction += pca.mean_[start:end]
             current = matrix[:, start:end]
             delta = reconstruction[block_missing] - current[block_missing]
             squared_error += float(np.dot(delta, delta))
@@ -587,11 +588,11 @@ def main() -> None:
 
     output_dir = input_path.parent.parent / "clustered"
     output_path = output_dir / f"{input_path.stem}.clustered.h5ad"
-    umap_path = output_dir / f"{input_path.stem}.umap.png"
-    spatial_path = output_dir / f"{input_path.stem}.spatial.png"
-    cropped_spatial_path = output_dir / f"{input_path.stem}.spatial_cropped.png"
-    spatial_only_path = output_dir / f"{input_path.stem}.spatial_only.png"
-    convergence_path = output_dir / f"{input_path.stem}.imputation_convergence.png"
+    umap_path = output_dir / "umap.png"
+    spatial_path = output_dir / "spatial.png"
+    cropped_spatial_path = output_dir / "spatial_cropped.png"
+    spatial_only_path = output_dir / "spatial_only.png"
+    convergence_path = output_dir / "residual_imputation_convergence.png"
     for path in (
         output_path,
         umap_path,

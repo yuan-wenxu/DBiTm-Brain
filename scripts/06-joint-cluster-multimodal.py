@@ -51,7 +51,7 @@ def parse_args() -> argparse.Namespace:
         "--input",
         type=Path,
         required=True,
-        help="Aligned H5MU from 04-apply-manual-registration-multimodal.py.",
+        help="Aligned H5MU from 05-apply-manual-registration-multimodal.py.",
     )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
@@ -81,8 +81,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--resolution",
         type=float,
-        default=0.6,
-        help="Resolution for joint Leiden clustering (default: 1.0).",
+        default=0.5,
+        help="Resolution for joint Leiden clustering (default: 0.5).",
     )
     parser.add_argument(
         "--umap-min-dist",

@@ -142,7 +142,6 @@ def build_anndata(paths: dict[str, Path], library_id: str) -> ad.AnnData:
     image = read_image(paths["image"], IMAGE_SCALE_FACTOR)
 
     adata = ad.AnnData(X=matrix, obs=obs, var=feature_frame)
-    adata.uns["matrix_sources"] = {"X": "transcriptome"}
     adata.uns["spatial"] = {
         library_id: {
             "images": {"hires": image},

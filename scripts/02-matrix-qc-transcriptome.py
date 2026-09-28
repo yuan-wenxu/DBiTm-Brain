@@ -66,7 +66,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output",
         type=Path,
-        help="Output filtered H5AD; defaults to qc/<input-stem>-qc.h5ad.",
+        help="Output filtered H5AD; defaults to qc/<input-stem>.qc.h5ad.",
     )
     parser.add_argument(
         "--min-genes-per-spot",
@@ -243,7 +243,7 @@ def main() -> None:
     output_path = (
         args.output.expanduser().resolve()
         if args.output
-        else input_path.parent / "qc" / f"{input_path.stem}-qc.h5ad"
+        else input_path.parent / "qc" / f"{input_path.stem}.qc.h5ad"
     )
     artifact_dir = output_path.parent / "plots"
 

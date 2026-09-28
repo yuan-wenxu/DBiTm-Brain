@@ -54,7 +54,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--taps", type=Path, required=True, help="TAPS H5AD.")
     parser.add_argument(
         "--taps-beta",
-        dest="taps_beta",
         type=Path,
         required=True,
         help="TAPS-beta H5AD used as the reference modality.",
@@ -368,7 +367,7 @@ def write_cluster_plots(
         ):
             plot_spatial_clusters(
                 output_path.parent
-                / f"{output_path.stem}-{file_id}-clusters{suffix}.png",
+                / f"{file_id}-clusters{suffix}.png",
                 MODALITY_LABELS[modality_id],
                 clusters,
                 cluster_labels,
@@ -425,12 +424,7 @@ def main() -> None:
         retained = retain_available_spots(table, adatas)
         aligned = align_modalities(adatas, retained)
         mdata = md.MuData(aligned)
-        mdata.uns["spot_correspondence"] = {
-            "source": str(overlap_path),
-            "reference_modality": "taps_beta",
-            "input_rows": len(table),
-            "retained_rows": len(retained),
-        }
+
         write_mudata(mdata, output_path)
         write_cluster_plots(
             output_path,

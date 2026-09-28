@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
         type=Path,
         help=(
             "Output clustered H5AD; defaults to "
-            "<input-parent-parent>/clustered/<input-stem>-clustered.h5ad."
+            "<input-parent-parent>/clustered/<input-stem>.clustered.h5ad."
         ),
     )
     parser.add_argument(
@@ -244,13 +244,7 @@ def pearson_residual_pca(
     adata.obsm["X_pca"] = working.obsm["X_pca"].astype(np.float32)
     adata.varm["PCs"] = working.varm["PCs"].astype(np.float32)
     adata.uns["pca"] = working.uns["pca"]
-    normalization = working.uns["pearson_residuals_normalization"]
-    clip = normalization["clip"]
-    adata.uns["pearson_residuals_normalization"] = {
-        "theta": float(normalization["theta"]),
-        "clip": float(np.sqrt(working.n_obs) if clip is None else clip),
-        "n_top_genes": int(n_top_genes),
-    }
+
     return adata, n_components
 
 
@@ -540,7 +534,7 @@ def main() -> None:
         if args.output
         else input_path.parent.parent
         / "clustered"
-        / f"{input_path.stem}-clustered.h5ad"
+        / f"{input_path.stem}.clustered.h5ad"
     )
     plot_dir = output_path.parent / "plots"
 
