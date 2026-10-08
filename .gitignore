@@ -219,4 +219,5 @@ __marimo__/
 # pixi environments
 .pixi/*
 !.pixi/config.toml
-/data
+data
+.vscode
