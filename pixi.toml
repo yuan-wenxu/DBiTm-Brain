@@ -28,3 +28,8 @@ bioconductor-chipseeker = ">=1.46.1,<2"
 bioconductor-txdbmaker = ">=1.6.2,<2"
 "bioconductor-txdb.hsapiens.ucsc.hg19.knowngene" = ">=3.22.1,<4"
 "bioconductor-go.db" = ">=3.22.0,<4"
+pytorch = "2.13.*"
+click = "8.5.*"
+
+[pypi-dependencies]
+rctd-py = ">=0.3.9, <0.4"
