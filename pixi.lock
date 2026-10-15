@@ -19,6 +19,8 @@ environments:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
     - url: https://conda.anaconda.org/bioconda/
+    indexes:
+    - https://pypi.org/simple
     packages:
       linux-64:
       - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-biobase-2.70.0-r45h01b2380_0.conda
@@ -38,6 +40,7 @@ environments:
       - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-s4vectors-0.48.1-r45h262fe30_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-sparsearray-1.10.10-r45h262fe30_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/bioconductor-xvector-0.50.0-r45h01b2380_0.conda
+      - conda: https://conda.anaconda.org/bioconda/linux-64/harmonypy-2.0.2-py312h9b2995c_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/ncls-0.0.70-py312h0fa9677_0.tar.bz2
       - conda: https://conda.anaconda.org/bioconda/linux-64/r-restfulr-0.0.17-r45hcdf289b_0.conda
       - conda: https://conda.anaconda.org/bioconda/linux-64/sorted_nearest-0.0.41-py312h0fa9677_0.conda
@@ -65,6 +68,7 @@ environments:
       - conda: https://conda.anaconda.org/bioconda/noarch/bioconductor-ucsc.utils-1.6.1-r45hdfd78af_0.conda
       - conda: https://conda.anaconda.org/bioconda/noarch/pyranges-0.1.4-pyhdfd78af_0.tar.bz2
       - conda: https://conda.anaconda.org/conda-forge/linux-64/_openmp_mutex-4.5-20_gnu.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/armadillo-15.6.0-h67ef746_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/arpack-3.9.1-nompi_hf03ea27_102.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/aws-c-auth-0.10.4-h4610da3_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/aws-c-cal-0.9.15-h6bbde05_1.conda
@@ -269,6 +273,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/linux-64/scipy-1.18.1-py312h106c528_1.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/sed-4.10-h19d0853_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/statsmodels-0.15.0-np2py312h32d774f_2.conda
+      - conda: https://conda.anaconda.org/conda-forge/linux-64/superlu-7.0.1-h8f6e6c4_0.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2023.1.0-haa8c3ee_2.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tk-8.6.13-noxft_h1df4ec4_4.conda
       - conda: https://conda.anaconda.org/conda-forge/linux-64/tktable-2.10-h0eb2ad0_11.conda
@@ -423,6 +428,8 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/yq-4.4.0-pyh5ded981_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.4.0-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
+      - pypi: https://files.pythonhosted.org/packages/b5/50/ddd4e791070b3f6f2d072f191639d0462906d058b8f5b18a271a6395094d/cnmf-1.7.1-py3-none-any.whl
+      - pypi: https://files.pythonhosted.org/packages/cf/f7/3367feadd4ab56783b0971c9b7edfbdd68e0c70ce877949a5dd2117ed4a0/palettable-3.3.3-py2.py3-none-any.whl
   rctd:
     channels:
     - url: https://conda.anaconda.org/conda-forge/
@@ -989,6 +996,22 @@ packages:
   purls: []
   size: 641687
   timestamp: 1770628594641
+- conda: https://conda.anaconda.org/bioconda/linux-64/harmonypy-2.0.2-py312h9b2995c_0.conda
+  sha256: 70a4e30ca3679c77c198386f352cce4fadbc176ffeda7f11551917da25a263c8
+  md5: f4313d80c398f480652aacfdbfba7de3
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - armadillo >=15.6,<16.0a0
+  - libgcc >=14
+  - libopenblas >=0.3.34,<1.0a0
+  - libstdcxx >=14
+  - numpy
+  - python >=3.12,<3.13.0a0
+  - python_abi 3.12.* *_cp312
+  license: GPL-3.0-or-later
+  license_family: GPL3
+  size: 159225
+  timestamp: 1789586649067
 - conda: https://conda.anaconda.org/bioconda/linux-64/ncls-0.0.70-py312h0fa9677_0.tar.bz2
   sha256: 1ef25bffd222aba5711320a3b2a2456f6c29fb3ea46de9db0e554abb5f2d59b2
   md5: f158c48948f27b122acd4d8657b67ec8
@@ -1435,6 +1458,22 @@ packages:
   purls: []
   size: 8050
   timestamp: 1788046427177
+- conda: https://conda.anaconda.org/conda-forge/linux-64/armadillo-15.6.0-h67ef746_0.conda
+  sha256: daeee502f81142b00b65b86b047390ec4a13675d9c51e5d2d9d537b64323b356
+  md5: 59a82e6bef22a377e1713118d637c568
+  depends:
+  - __glibc >=2.17,<3.0.a0
+  - arpack >=3.9.1,<3.10.0a0 nompi_*
+  - libblas >=3.9.0,<4.0a0
+  - libgcc >=15
+  - liblapack >=3.9.0,<4.0a0
+  - libstdcxx >=15
+  - superlu <7.1
+  - superlu >=7.0.1,<7.1.0a0
+  license: Apache-2.0
+  license_family: APACHE
+  size: 483022
+  timestamp: 1788787007967
 - conda: https://conda.anaconda.org/conda-forge/linux-64/arpack-3.9.1-nompi_hf03ea27_102.conda
   sha256: 6d71343420292132be0192ddd962b308f7b8a0a0630d1db83fb9d65e8167c6ce
   md5: e09af397232ef1070e0b6cbf4c64aacb
@@ -5135,6 +5174,20 @@ packages:
   - pkg:pypi/statsmodels?source=compressed-mapping
   size: 13538299
   timestamp: 1790033599082
+- conda: https://conda.anaconda.org/conda-forge/linux-64/superlu-7.0.1-h8f6e6c4_0.conda
+  sha256: 4e748f877553c7ed42290420ba1e9aa0e80cf72b23b463f12dbb7927c16f0437
+  md5: 6bd14d1838657334b3c0eb02f85561e2
+  depends:
+  - libgfortran5 >=13.3.0
+  - libgfortran
+  - libgcc >=13
+  - __glibc >=2.17,<3.0.a0
+  - libcblas >=3.9.0,<4.0a0
+  - libblas >=3.9.0,<4.0a0
+  license: BSD-3-Clause
+  license_family: BSD
+  size: 280620
+  timestamp: 1745607580942
 - conda: https://conda.anaconda.org/conda-forge/linux-64/tbb-2023.1.0-haa8c3ee_2.conda
   sha256: 5e47c01ea6c2bea041b78b4e45b3135b80bfc015533ec44e4c2d2326a755f8ba
   md5: f805909f478c179e230baf7bd5878e26
@@ -7343,3 +7396,22 @@ packages:
   - ruff ; extra == 'dev'
   - spatialdata>=0.2 ; extra == 'dev'
   requires_python: '>=3.10'
+- pypi: https://files.pythonhosted.org/packages/b5/50/ddd4e791070b3f6f2d072f191639d0462906d058b8f5b18a271a6395094d/cnmf-1.7.1-py3-none-any.whl
+  name: cnmf
+  version: 1.7.1
+  sha256: a4b237169626f632fee04a31441365669b12a02c72a93b079686b0ce47a29ec9
+  requires_dist:
+  - scikit-learn>=1.0
+  - anndata>=0.9
+  - scanpy
+  - pandas
+  - numpy
+  - matplotlib
+  - palettable
+  - scipy
+  - pyyaml
+- pypi: https://files.pythonhosted.org/packages/cf/f7/3367feadd4ab56783b0971c9b7edfbdd68e0c70ce877949a5dd2117ed4a0/palettable-3.3.3-py2.py3-none-any.whl
+  name: palettable
+  version: 3.3.3
+  sha256: 74e9e7d7fe5a9be065e02397558ed1777b2df0b793a6f4ce1a5ee74f74fb0caa
+  requires_python: '>=3.7'

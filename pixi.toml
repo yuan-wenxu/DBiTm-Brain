@@ -31,6 +31,10 @@ bioconductor-chipseeker = ">=1.46.1,<2"
 bioconductor-txdbmaker = ">=1.6.2,<2"
 "bioconductor-txdb.hsapiens.ucsc.hg19.knowngene" = ">=3.22.1,<4"
 "bioconductor-go.db" = ">=3.22.0,<4"
+harmonypy = ">=2.0.2,<3"
+
+[feature.analysis.pypi-dependencies]
+cnmf = ">=1.7.1, <2"
 
 [feature.rctd]
 platforms = ["linux-64-cuda-12-9"]
