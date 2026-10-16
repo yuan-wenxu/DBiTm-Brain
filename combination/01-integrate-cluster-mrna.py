@@ -217,9 +217,7 @@ def combine_samples(
 
 
 def compute_pca(adata: ad.AnnData, args: argparse.Namespace) -> None:
-    # Expression stays uncorrected, library-normalized and log-transformed.
-    sc.pp.normalize_total(adata, target_sum=1e4)
-    sc.pp.log1p(adata)
+    # Keep raw counts in .X; Pearson residuals are computed only for PCA.
     sc.experimental.pp.highly_variable_genes(
         adata, layer="counts", flavor="pearson_residuals", batch_key="sample",
         n_top_genes=min(args.n_top_genes, adata.n_vars), theta=args.pearson_theta,
