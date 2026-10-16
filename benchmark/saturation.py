@@ -265,7 +265,11 @@ def atomic_write_table(frame: pd.DataFrame, path: Path, compression: object = No
 def save_figure_atomic(figure: plt.Figure, path: Path, file_format: str) -> None:
     temporary = path.with_name(f".{path.name}.tmp.{os.getpid()}")
     try:
-        save_args: dict[str, object] = {"format": file_format, "bbox_inches": "tight"}
+        save_args: dict[str, object] = {
+            "format": file_format,
+            "bbox_inches": "tight",
+            "pad_inches": 0.02,
+        }
         if file_format == "png":
             save_args["dpi"] = 300
         figure.savefig(temporary, **save_args)
@@ -274,6 +278,13 @@ def save_figure_atomic(figure: plt.Figure, path: Path, file_format: str) -> None
         temporary.unlink(missing_ok=True)
 
 
+@plt.rc_context({
+    "font.family": "sans-serif",
+    "font.sans-serif": [
+        "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+    ],
+    "axes.linewidth": 0.4,
+})
 def write_plot(
     curves: pd.DataFrame,
     output_dir: Path,
@@ -287,8 +298,8 @@ def write_plot(
             "SAMPLE_COLORS lacks entries for: " + ", ".join(missing_colors)
         )
 
-    figure_width = 8
-    figure, axis = plt.subplots(figsize=(figure_width, 5))
+    figure, axis = plt.subplots(figsize=(4, 2))
+    figure.subplots_adjust(left=0.14, right=0.68, bottom=0.20, top=0.88)
     for sample in sample_names:
         data = curves.loc[curves["sample"] == sample].sort_values("target_gbp")
         color = SAMPLE_COLORS[sample]
@@ -296,7 +307,7 @@ def write_plot(
             data["target_gbp"],
             data["median_unique_cpgs"] / 1e4,
             color=color,
-            linewidth=2.0,
+            linewidth=0.8,
             label=sample,
         )
         marker_mask = np.isclose(
@@ -309,29 +320,31 @@ def write_plot(
             data.loc[marker_mask, "target_gbp"],
             data.loc[marker_mask, "median_unique_cpgs"] / 1e4,
             color=color,
-            s=22,
+            s=5,
             linewidths=0,
             zorder=3,
         )
 
-    axis.set_title(f"{title}", fontsize=12)
-    axis.set_xlabel("Sequencing depth (Gbp)", fontsize=10)
-    axis.set_ylabel("Median unique CpGs per HQ spot (×10⁴)", fontsize=10)
+    axis.set_title(title, fontsize=7, pad=3)
+    axis.set_xlabel("Sequencing depth (Gbp)", fontsize=6, labelpad=4)
+    axis.set_ylabel(
+        "Median unique CpGs per HQ spot (×10⁴)", fontsize=6, labelpad=5
+    )
+    axis.tick_params(axis="both", labelsize=5, width=0.4, length=2, pad=2)
+    axis.locator_params(axis="both", nbins=6)
     axis.set_xlim(left=0)
     axis.set_ylim(bottom=0)
-    axis.grid(True, alpha=0.25)
+    axis.grid(True, color="#D0D0D0", linewidth=0.3, alpha=0.6)
     axis.legend(
-        title="Sample",
         loc="center left",
-        bbox_to_anchor=(1.01, 0.5) if len(sample_names) > 7 else None,
-        frameon=True,
-        fontsize=8,
-        title_fontsize=8,
-        labelspacing=0.35,
-        borderpad=0.4,
-        handlelength=2.2,
+        bbox_to_anchor=(1.035, 0.5),
+        frameon=False,
+        fontsize=5,
+        labelspacing=0.3,
+        borderaxespad=0,
+        handlelength=1.3,
+        handletextpad=0.5,
     )
-    figure.tight_layout()
     save_figure_atomic(
         figure, output_dir / "combined_saturation_curve.png", "png"
     )

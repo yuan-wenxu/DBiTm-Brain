@@ -26,6 +26,8 @@ Use four-space indentation, type hints, `pathlib.Path`, descriptive `snake_case`
 
 Use this cluster palette in order: `#A73030`, `#E64B35`, `#2F5597`, `#4DBBD5`, `#CC79A7`, `#7E57C2`, `#C5A3E0`, `#D6A500`, `#FFE082`, `#2CA02C`, `#264653`, `#E7298A`, `#98DF8A`, `#C49C94`. Assign colors deterministically by numeric cluster ID so UMAP and spatial plots remain consistent. Use `#4DBBD5` for single-color QC distributions and `#E64B35`–white–`#4DBBD5` for diverging spatial QC metrics.
 
+Set the figure canvas to **4 × 2 inches** (`figsize=(4, 2)`). Use sans-serif fonts, preferring Arial or Helvetica, with Liberation Sans or DejaVu Sans as fallbacks. Font sizes are in points: **7 pt** for plot titles, **6 pt** for axis titles, and **5 pt** for axis tick labels and legends. Export **PNG at 300 dpi** by default. Export PDF only when requested.Keep outer margins compact with `bbox_inches="tight"` and `pad_inches=0.02`. Bring titles and legends close to the plotting area; use `pad=3` for plot titles and `labelpad=5` for y-axis titles where applicable. Check that labels and legends remain fully visible.
+
 ## Testing Guidelines
 
 There is no automated test suite or coverage requirement. For significant changes, create minimal synthetic data under `/tmp` and run only the affected workflow through `pixi run`. Verify dimensions, required fields, output paths, and plots as applicable. Run modified CLIs with `--help` and `git diff --check`. Remove temporary artifacts afterward.

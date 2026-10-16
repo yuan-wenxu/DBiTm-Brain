@@ -449,14 +449,18 @@ def plot_boxplots(
     with plt.rc_context(
         {
             "font.family": "sans-serif",
-            "font.size": 10,
+            "font.sans-serif": [
+                "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+            ],
+            "font.size": 5,
             "axes.edgecolor": "#666666",
-            "axes.linewidth": 0.8,
+            "axes.linewidth": 0.4,
             "xtick.color": "#2B2B2B",
             "ytick.color": "#2B2B2B",
         }
     ):
-        figure, axis = plt.subplots(figsize=(8, 4))
+        figure, axis = plt.subplots(figsize=(4, 2))
+        figure.subplots_adjust(left=0.08, right=0.74, bottom=0.24, top=0.88)
         for sample_index, sample in enumerate(sample_order):
             color = SAMPLE_COLORS[sample]
             for state_position, state in enumerate(PLOT_STATE_ORDER, start=1):
@@ -470,20 +474,22 @@ def plot_boxplots(
                     whis=1.5,
                     showfliers=False,
                     patch_artist=True,
-                    medianprops={"color": "#1F1F1F", "linewidth": 0.8},
-                    whiskerprops={"color": color, "linewidth": 0.8},
-                    capprops={"color": color, "linewidth": 0.8},
+                    medianprops={"color": "#1F1F1F", "linewidth": 0.4},
+                    whiskerprops={"color": color, "linewidth": 0.4},
+                    capprops={"color": color, "linewidth": 0.4},
                     boxprops={
                         "facecolor": color,
                         "edgecolor": color,
-                        "linewidth": 0.9,
+                        "linewidth": 0.4,
                     },
                 )
 
         axis.set_title(
-            "DNA methylation under different chromatin states", fontsize=12, pad=8
+            "DNA methylation under different chromatin states",
+            fontsize=7, pad=3,
         )
-        axis.set_ylabel("Methylation Levels", fontsize=12)
+        axis.set_ylabel("Methylation Levels", fontsize=6, labelpad=5)
+        axis.tick_params(axis="both", labelsize=5, width=0.4, length=2, pad=2)
         axis.set_ylim(-0.05, 1.03)
         axis.set_yticks([0, 0.25, 0.5, 0.75, 1.0])
         axis.set_xticks(
@@ -493,7 +499,7 @@ def plot_boxplots(
             ha="right",
             rotation_mode="anchor",
         )
-        axis.grid(axis="both", color="#D9D9D9", linewidth=0.8, alpha=0.8)
+        axis.grid(axis="both", color="#D9D9D9", linewidth=0.3, alpha=0.8)
         axis.set_axisbelow(True)
         axis.legend(
             handles=[
@@ -504,15 +510,16 @@ def plot_boxplots(
                 )
                 for sample in sample_order
             ],
-            title="Sample",
             loc="center left",
-            bbox_to_anchor=(1.01, 0.5),
-            frameon=True,
-            fontsize=8,
-            title_fontsize=8,
+            bbox_to_anchor=(1.025, 0.5),
+            frameon=False,
+            fontsize=5,
+            labelspacing=0.3,
+            borderaxespad=0,
+            handlelength=1.3,
+            handletextpad=0.5,
         )
-        figure.tight_layout()
-        figure.savefig(path, dpi=300, bbox_inches="tight")
+        figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
         plt.close(figure)
 
 
@@ -526,14 +533,18 @@ def plot_spot_filtering(
     with plt.rc_context(
         {
             "font.family": "sans-serif",
-            "font.size": 10,
+            "font.sans-serif": [
+                "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+            ],
+            "font.size": 5,
             "axes.edgecolor": "#666666",
-            "axes.linewidth": 0.8,
+            "axes.linewidth": 0.4,
             "xtick.color": "#2B2B2B",
             "ytick.color": "#2B2B2B",
         }
     ):
-        figure, axis = plt.subplots(figsize=(8, 5))
+        figure, axis = plt.subplots(figsize=(4, 2))
+        figure.subplots_adjust(left=0.12, right=0.64, bottom=0.20, top=0.88)
         maximum_spot_count = 0
         for sample in sample_order:
             ordered = sorted(
@@ -550,7 +561,7 @@ def plot_spot_filtering(
                 ranks,
                 site_counts,
                 color=SAMPLE_COLORS[sample],
-                s=8,
+                s=2,
                 alpha=0.75,
                 linewidths=0,
                 label=f"{sample} ({retained_count:,}/{len(ordered):,} retained)",
@@ -559,25 +570,33 @@ def plot_spot_filtering(
             min_total_sites,
             color="#1F1F1F",
             linestyle="--",
-            linewidth=1.2,
+            linewidth=0.6,
             label=f"Threshold = {min_total_sites:,}",
         )
         axis.set_yscale("symlog", linthresh=1)
         axis.set_ylim(bottom=0)
-        axis.set_title("Spot filtering by matched CG coverage", fontsize=12, pad=8)
-        axis.set_xlabel("Spot rank (highest coverage first)", fontsize=10)
-        axis.set_ylabel("Matched CG sites", fontsize=10)
+        axis.set_title(
+            "Spot filtering by matched CG coverage", fontsize=7, pad=3
+        )
+        axis.set_xlabel("Spot rank (highest coverage first)", fontsize=6,
+                        labelpad=4)
+        axis.set_ylabel("Matched CG sites", fontsize=6, labelpad=5)
+        axis.tick_params(axis="both", which="both", labelsize=5,
+                         width=0.4, length=2, pad=2)
         axis.set_xlim(0.5, maximum_spot_count + 0.5)
-        axis.grid(axis="both", color="#D9D9D9", linewidth=0.8, alpha=0.8)
+        axis.grid(axis="both", color="#D9D9D9", linewidth=0.3, alpha=0.8)
         axis.set_axisbelow(True)
         axis.legend(
             loc="center left",
-            bbox_to_anchor=(1.01, 0.5),
+            bbox_to_anchor=(1.035, 0.5),
             frameon=False,
-            fontsize=8,
+            fontsize=5,
+            labelspacing=0.3,
+            borderaxespad=0,
+            handlelength=1.3,
+            handletextpad=0.5,
         )
-        figure.tight_layout()
-        figure.savefig(path, dpi=300, bbox_inches="tight")
+        figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
         plt.close(figure)
 
 

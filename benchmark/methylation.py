@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from matplotlib.patches import Patch
+from matplotlib.ticker import MaxNLocator
 
 from saturation import SAMPLE_COLORS
 
@@ -36,6 +37,27 @@ SUMMARY_FIELDS = [
     "plotted_spot_count",
     "median_methylation",
 ]
+FIGURE_SIZE = (4, 2)
+PLOT_STYLE = {
+    "font.family": "sans-serif",
+    "font.sans-serif": [
+        "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+    ],
+    "font.size": 5,
+    "axes.titlesize": 6,
+    "axes.labelsize": 6,
+    "axes.linewidth": 0.4,
+    "xtick.labelsize": 5,
+    "ytick.labelsize": 5,
+    "xtick.major.width": 0.4,
+    "ytick.major.width": 0.4,
+    "xtick.major.size": 2,
+    "ytick.major.size": 2,
+    "xtick.major.pad": 2,
+    "ytick.major.pad": 2,
+    "legend.fontsize": 5,
+    "savefig.dpi": 300,
+}
 
 
 def parse_args(argv: Optional[list[str]] = None) -> argparse.Namespace:
@@ -234,7 +256,7 @@ def save_figure_atomic(figure: plt.Figure, path: Path) -> None:
             format="png",
             dpi=300,
             bbox_inches="tight",
-            pad_inches=0.03,
+            pad_inches=0.02,
         )
         os.replace(temporary, path)
     finally:
@@ -284,27 +306,41 @@ def draw_grouped_violins(
         body.set_alpha(0.92)
 
     for boundary in (1.5, 2.5, 3.5):
-        axis.axvline(boundary, color="#D0D0D0", linewidth=0.7, zorder=0)
+        axis.axvline(boundary, color="#D0D0D0", linewidth=0.35, zorder=0)
     axis.set_xlim(0.52, 4.48)
-    axis.grid(axis="y", alpha=0.25)
+    axis.grid(axis="y", color="#D0D0D0", linewidth=0.3, alpha=0.6)
     axis.set_axisbelow(True)
 
 
-def write_plot(rates: pd.DataFrame, sample_names: list[str], output_dir: Path) -> None:
+def write_plot(
+    rates: pd.DataFrame, sample_names: list[str], output_dir: Path,
+) -> None:
+    with matplotlib.rc_context(PLOT_STYLE):
+        draw_methylation_figure(rates, sample_names, output_dir)
+
+
+def draw_methylation_figure(
+    rates: pd.DataFrame, sample_names: list[str], output_dir: Path,
+) -> None:
     distributions, positions, body_samples = grouped_violin_data(
         rates, sample_names
     )
     violin_width = min(0.052, 0.68 / len(sample_names))
-    figure = plt.figure(figsize=(8, 3.5), layout="tight")
+    figure = plt.figure(figsize=FIGURE_SIZE)
     grid = figure.add_gridspec(
         2,
         2,
         height_ratios=(2.1, 1),
-        width_ratios=(3, 1.4),
+        width_ratios=(3, 1.7),
+        left=0.12,
+        right=0.99,
+        bottom=0.14,
+        top=0.87,
+        wspace=0.08,
+        hspace=0.10,
     )
     upper_axis = figure.add_subplot(grid[0, 0])
     lower_axis = figure.add_subplot(grid[1, 0], sharex=upper_axis)
-    legend_axis = figure.add_subplot(grid[:, 1])
     for axis in (upper_axis, lower_axis):
         draw_grouped_violins(
             axis,
@@ -333,20 +369,22 @@ def write_plot(rates: pd.DataFrame, sample_names: list[str], output_dir: Path) -
     upper_axis.tick_params(
         axis="x", which="both", bottom=False, labelbottom=False
     )
-    upper_axis.tick_params(axis="y", labelsize=10)
-    lower_axis.tick_params(axis="both", labelsize=10)
+    upper_axis.tick_params(axis="y", labelsize=5)
+    lower_axis.tick_params(axis="both", labelsize=5)
+    upper_axis.yaxis.set_major_locator(MaxNLocator(nbins=3))
+    lower_axis.yaxis.set_major_locator(MaxNLocator(nbins=2))
     lower_axis.set_xticks(
         np.arange(1, len(CONTEXT_COLUMNS) + 1),
         labels=list(CONTEXT_COLUMNS),
     )
-    figure.supylabel("Methylation rate per spot (%)", fontsize=10)
+    figure.supylabel("Methylation rate per spot (%)", x=0.045, fontsize=6)
 
     break_style = {
         "marker": [(-1, -0.5), (1, 0.5)],
-        "markersize": 8,
+        "markersize": 3,
         "linestyle": "none",
         "color": "#333333",
-        "markeredgewidth": 0.8,
+        "markeredgewidth": 0.4,
         "clip_on": False,
     }
     upper_axis.plot(
@@ -366,24 +404,24 @@ def write_plot(rates: pd.DataFrame, sample_names: list[str], output_dir: Path) -
         Patch(
             facecolor=SAMPLE_COLORS[sample],
             edgecolor="#333333",
-            linewidth=0.5,
+            linewidth=0.3,
             label=sample,
         )
         for sample in sample_names
     ]
-    legend_axis.axis("off")
-    legend_axis.legend(
+    figure.legend(
         handles=legend_handles,
-        title="Sample (left-to-right order)",
-        loc="center",
+        loc="center left",
+        bbox_to_anchor=(0.67, 0.505),
         ncol=1,
-        frameon=True,
-        fontsize=8,
-        title_fontsize=8,
-        handlelength=1.5,
-        labelspacing=0.35,
+        frameon=False,
+        fontsize=5,
+        handlelength=1.3,
+        handletextpad=0.5,
+        borderaxespad=0,
+        labelspacing=0.3,
     )
-    figure.suptitle("Methylation rate", fontsize=12)
+    figure.suptitle("Methylation rate", x=0.48, y=0.93, fontsize=7)
     save_figure_atomic(
         figure, output_dir / "combined_methylation_rate_violin.png"
     )
