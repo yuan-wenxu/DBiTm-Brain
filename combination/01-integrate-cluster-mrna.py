@@ -28,7 +28,7 @@ from utils import spatial_plot_data, write_anndata
 
 BARCODE_PREFIXES = {"p7-rep1": "p7", "p35-rep1": "p35", "p60-rep1": "p60"}
 SAMPLE_COLORS = ("#E64B35", "#4DBBD5", "#7E57C2")
-UMAP_POINT_SIZE = 3.0
+UMAP_POINT_SIZE = 2.0
 UMAP_POINT_ALPHA = 0.7
 CLUSTER_COLORS = (
     "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
@@ -73,7 +73,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--harmony-tolerance", type=float, default=1e-4)
     parser.add_argument("--harmony-cluster-tolerance", type=float, default=1e-5)
     parser.add_argument("--n-neighbors", type=int, default=10)
-    parser.add_argument("--n-pcs", type=int, default=20)
+    parser.add_argument("--n-pcs", type=int, default=40)
     parser.add_argument("--resolution", type=float, default=0.4)
     parser.add_argument("--umap-min-dist", type=float, default=0.3)
     parser.add_argument("--spot-size-um", type=float, default=50.0)
@@ -206,9 +206,7 @@ def combine_samples(
         raise ValueError("Some spots have no counts after shared-gene filtering")
     combined.layers["counts"] = combined.X.copy()
     combined.var["n_cells_by_counts"] = detected[keep]
-    combined.var["total_counts"] = np.asarray(combined.X.sum(axis=0)).ravel()
-    combined.var["mean_counts"] = combined.var["total_counts"] / combined.n_obs
-    combined.var["pct_dropout_by_counts"] = 100 * (1 - detected[keep] / combined.n_obs)
+
     print(
         f"Combined {combined.n_obs:,} spots; {len(common_genes):,} shared genes, "
         f"{combined.n_vars:,} retained after filtering", flush=True,
@@ -231,15 +229,12 @@ def compute_pca(adata: ad.AnnData, args: argparse.Namespace) -> None:
     if n_components < 2:
         raise ValueError("Too few spots or HVGs for PCA")
     sc.experimental.pp.normalize_pearson_residuals(working, theta=args.pearson_theta)
-    adata.uns["pearson_residuals_normalization"] = working.uns["pearson_residuals_normalization"]
+
     sc.pp.pca(working, n_comps=n_components, random_state=args.random_seed)
     adata.obsm["X_pca"] = working.obsm["X_pca"].astype(np.float32)
     loadings = np.zeros((adata.n_vars, n_components), dtype=np.float32)
     loadings[hvg] = working.varm["PCs"]
     adata.varm["PCs"] = loadings
-    adata.uns["pca"] = working.uns["pca"]
-    adata.uns["pca"]["params"]["use_highly_variable"] = True
-    adata.uns["pca"]["params"]["input_transform"] = "pearson_residuals"
 
 
 def integrate_and_cluster(adata: ad.AnnData, args: argparse.Namespace) -> None:
@@ -302,7 +297,6 @@ def embedding_panel(
     axis: plt.Axes, embedding: np.ndarray, labels: pd.Series,
     categories: list[str], colors: list[str], title: str,
     *, alpha: float = 1.0, show_legend: bool = True,
-    legend_title: str | None = None,
 ) -> None:
     codes = pd.Categorical(labels, categories=categories).codes
     if (codes < 0).any():
@@ -314,18 +308,17 @@ def embedding_panel(
         embedding[order, 0], embedding[order, 1], s=UMAP_POINT_SIZE,
         c=point_colors[order], alpha=alpha, linewidths=0,
     )
-    axis.set_title(title, fontsize=12)
-    axis.set_xlabel("UMAP1", fontsize=10)
-    axis.set_ylabel("UMAP2", fontsize=10)
-    axis.tick_params(axis="both", labelsize=10)
+    axis.set_title(title, fontsize=7)
+    axis.set_axis_off()
+
     if show_legend:
         axis.legend(
             handles=[Line2D(
                 [], [], marker="o", linestyle="none", markerfacecolor=color,
                 markeredgecolor="none", markersize=5, label=label,
             ) for label, color in zip(categories, colors, strict=True)],
-            title=legend_title, bbox_to_anchor=(1.02, 1), loc="upper left",
-            frameon=False, fontsize=8,
+            bbox_to_anchor=(1.02, 1), loc="upper left",
+            frameon=False, fontsize=5,
         )
 
 
@@ -336,6 +329,12 @@ def sample_colors(n_samples: int) -> list[str]:
 
 
 def plot_results(adata: ad.AnnData, output_dir: Path, args: argparse.Namespace) -> None:
+    plt.rcParams.update({
+        "font.family": "sans-serif",
+        "font.sans-serif": [
+            "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+        ],
+    })
     plot_dir = output_dir / "plots"
     plot_dir.mkdir()
     names = list(adata.obs["sample"].cat.categories)
@@ -344,26 +343,26 @@ def plot_results(adata: ad.AnnData, output_dir: Path, args: argparse.Namespace) 
     adata.uns["leiden_colors"] = np.asarray(colors, dtype=str)
     sample_palette = sample_colors(len(names))
     adata.uns["sample_colors"] = np.asarray(sample_palette, dtype=str)
-    figure, axes = plt.subplots(1, 2, figsize=(12, 5))
+    figure, axes = plt.subplots(1, 2, figsize=(6, 3))
     embedding_panel(
         axes[0], adata.obsm["X_umap_uncorrected"], adata.obs["sample"],
-        names, sample_palette, "Before Harmony: sample", alpha=UMAP_POINT_ALPHA,
+        names, sample_palette, "Before Harmony", alpha=UMAP_POINT_ALPHA,
         show_legend=False,
     )
     embedding_panel(
         axes[1], adata.obsm["X_umap"], adata.obs["sample"],
-        names, sample_palette, "After Harmony: sample", alpha=UMAP_POINT_ALPHA,
-        legend_title="Sample",
+        names, sample_palette, "After Harmony", alpha=UMAP_POINT_ALPHA,
+        show_legend=True,
     )
     figure.tight_layout()
     figure.savefig(plot_dir / "umap-before-after.png", dpi=300, bbox_inches="tight")
     plt.close(figure)
 
-    figure, axis = plt.subplots(figsize=(7, 5))
+    figure, axis = plt.subplots(figsize=(3, 3))
     embedding_panel(
         axis, adata.obsm["X_umap"], adata.obs["leiden"],
         clusters, colors, "After Harmony: joint Leiden clusters",
-        legend_title="Cluster",
+        show_legend=True,
     )
     figure.tight_layout()
     figure.savefig(plot_dir / "umap-clusters.png", dpi=300, bbox_inches="tight")
@@ -373,17 +372,27 @@ def plot_results(adata: ad.AnnData, output_dir: Path, args: argparse.Namespace) 
         ids = sample.obs["leiden"].astype(int).to_numpy()
         facecolors = [colors[cluster] for cluster in ids]
         if {"array_row", "array_col"} <= set(sample.obs.columns):
-            figure, axis = plt.subplots(figsize=(7, 6))
+            figure, axis = plt.subplots(figsize=(3, 3))
             rows = sample.obs["array_row"].to_numpy(dtype=float)
             columns = sample.obs["array_col"].to_numpy(dtype=float)
-            axis.scatter(columns, rows, c=facecolors, marker="s", s=35, linewidths=0)
+            # Size spots in array units so smaller figures retain the gaps.
+            spacing = min(
+                (float(np.diff(np.unique(values)).min())
+                 for values in (rows, columns) if np.unique(values).size > 1),
+                default=1.0,
+            )
+            side = 0.7 * spacing
+            axis.add_collection(PatchCollection(
+                [Rectangle((column - side / 2, row - side / 2), side, side)
+                 for column, row in zip(columns, rows, strict=True)],
+                facecolors=facecolors, edgecolors="none",
+            ))
+            axis.autoscale_view()
             axis.invert_xaxis()
             axis.invert_yaxis()
             axis.set_aspect("equal")
-            axis.set_title(f"{name}: joint clusters", fontsize=12)
-            axis.set_xlabel("Array column", fontsize=10)
-            axis.set_ylabel("Array row", fontsize=10)
-            axis.tick_params(axis="both", labelsize=10)
+            axis.set_title(f"{name}: joint clusters", fontsize=7)
+            axis.set_axis_off()
             add_cluster_legend(axis, clusters, colors)
             figure.tight_layout()
             figure.savefig(plot_dir / f"{name}.array-clusters.png", dpi=300, bbox_inches="tight")
@@ -393,7 +402,7 @@ def plot_results(adata: ad.AnnData, output_dir: Path, args: argparse.Namespace) 
             sample.uns["spatial"] = {name: adata.uns["spatial"][name]}
             image, x, y, pixel_size_um = spatial_plot_data(sample)
             side = args.spot_size_um / pixel_size_um
-            figure, axis = plt.subplots(figsize=(8, 7))
+            figure, axis = plt.subplots(figsize=(5, 5))
             axis.imshow(image, cmap="gray", origin="upper")
             axis.add_collection(PatchCollection(
                 [Rectangle((xx - side / 2, yy - side / 2), side, side)
@@ -402,7 +411,7 @@ def plot_results(adata: ad.AnnData, output_dir: Path, args: argparse.Namespace) 
             ))
             axis.set_xlim(0, image.shape[1])
             axis.set_ylim(image.shape[0], 0)
-            axis.set_title(f"{name}: joint clusters on tissue", fontsize=12)
+            axis.set_title(f"{name}: joint clusters on tissue", fontsize=7)
             axis.set_axis_off()
             add_cluster_legend(axis, clusters, colors)
             figure.tight_layout()
@@ -414,7 +423,8 @@ def add_cluster_legend(axis: plt.Axes, clusters: list[str], colors: list[str]) -
     axis.legend(
         handles=[Patch(facecolor=color, label=label)
                  for label, color in zip(clusters, colors, strict=True)],
-        title="Cluster", bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False,
+        bbox_to_anchor=(1.02, 1), loc="upper left", frameon=False,
+        fontsize=5,
     )
 
 
