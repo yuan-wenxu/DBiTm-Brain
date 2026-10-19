@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Integrate QC-filtered mRNA samples with Pearson-residual PCA and Harmony."""
+"""Integrate QC mRNA with Pearson-residual PCA and Harmony, then rank markers."""
 
 from __future__ import annotations
 
@@ -38,7 +38,13 @@ CLUSTER_COLORS = (
 OUTPUT_NAMES = (
     "mrna-combined.harmony.clustered.h5ad", "spot_clusters.csv",
     "sample_cluster_counts.csv", "highly_variable_genes.csv",
-    "plots",
+    "cluster_markers.csv", "cluster_annotation.csv", "plots",
+)
+MARKER_COLUMNS = (
+    "cluster", "rank", "gene_id", "gene_name", "score",
+    "log2_fold_change", "p_value", "p_value_adj",
+    "fraction_in_cluster", "fraction_out_cluster",
+    "n_spots_in_cluster", "n_spots_out_cluster",
 )
 
 
@@ -74,15 +80,31 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--harmony-cluster-tolerance", type=float, default=1e-5)
     parser.add_argument("--n-neighbors", type=int, default=10)
     parser.add_argument("--n-pcs", type=int, default=40)
-    parser.add_argument("--resolution", type=float, default=0.4)
+    parser.add_argument("--resolution", type=float, default=0.5)
     parser.add_argument("--umap-min-dist", type=float, default=0.3)
     parser.add_argument("--spot-size-um", type=float, default=50.0)
     parser.add_argument("--random-seed", type=int, default=42)
     parser.add_argument("--n-threads", type=int, default=4)
+    parser.add_argument(
+        "--top-markers-per-cluster", type=int, default=50,
+        help="Maximum significant upregulated markers per cluster (default: 50).",
+    )
+    parser.add_argument(
+        "--marker-fdr", type=float, default=0.05,
+        help="Retain markers with BH-adjusted P below this value (default: 0.05).",
+    )
+    parser.add_argument(
+        "--marker-min-log2fc", type=float, default=0.25,
+        help="Minimum estimated marker log2 fold change (default: 0.25).",
+    )
+    parser.add_argument(
+        "--marker-min-fraction", type=float, default=0.1,
+        help="Minimum fraction of expressing spots in the cluster (default: 0.1).",
+    )
     args = parser.parse_args()
     for name in (
         "min_spots_per_gene", "n_pcs", "harmony_max_iter", "n_threads",
-        "harmony_max_kmeans_iter",
+        "harmony_max_kmeans_iter", "top_markers_per_cluster",
     ):
         if getattr(args, name) < 1:
             parser.error(f"--{name.replace('_', '-')} must be at least 1")
@@ -99,6 +121,12 @@ def parse_args() -> argparse.Namespace:
         parser.error("--harmony-theta must be finite and nonnegative")
     if not 0 <= args.umap_min_dist <= 1:
         parser.error("--umap-min-dist must be between 0 and 1")
+    if not 0 < args.marker_fdr <= 1:
+        parser.error("--marker-fdr must be greater than 0 and at most 1")
+    if not 0 <= args.marker_min_fraction <= 1:
+        parser.error("--marker-min-fraction must be between 0 and 1")
+    if not np.isfinite(args.marker_min_log2fc) or args.marker_min_log2fc < 0:
+        parser.error("--marker-min-log2fc must be finite and nonnegative")
     if len(args.inputs) < 2:
         parser.error("At least two input samples are required")
     if args.random_seed < 0:
@@ -282,6 +310,80 @@ def integrate_and_cluster(adata: ad.AnnData, args: argparse.Namespace) -> None:
     sc.tl.umap(adata, min_dist=args.umap_min_dist, random_state=args.random_seed)
 
 
+def find_cluster_markers(
+    adata: ad.AnnData, args: argparse.Namespace,
+) -> pd.DataFrame:
+    """Rank each cluster against the rest using log-normalized raw counts."""
+    labels = adata.obs["leiden"]
+    sizes = labels.value_counts()
+    groups = [
+        str(cluster) for cluster in labels.cat.categories
+        if sizes[cluster] >= 2 and adata.n_obs - sizes[cluster] >= 2
+    ]
+    if not groups:
+        print("No clusters have enough spots for marker testing", flush=True)
+        return pd.DataFrame(columns=MARKER_COLUMNS)
+    if len(groups) < len(labels.cat.categories):
+        print("Skipping marker tests with fewer than two spots per group", flush=True)
+    # Keep .X, layers['counts'], and the integration embeddings unchanged.
+    working = ad.AnnData(
+        X=adata.layers["counts"].copy(), obs=adata.obs[["leiden"]].copy(),
+        var=adata.var.copy(),
+    )
+    sc.pp.normalize_total(working, target_sum=10000)
+    sc.pp.log1p(working)
+    print(
+        f"Finding markers for {len(groups)} clusters using all "
+        f"{working.n_vars:,} genes", flush=True,
+    )
+    sc.tl.rank_genes_groups(
+        working, groupby="leiden", groups=groups, reference="rest",
+        method="wilcoxon", corr_method="benjamini-hochberg",
+        tie_correct=True, use_raw=False, pts=True, n_genes=working.n_vars,
+    )
+    result = working.uns["rank_genes_groups"]
+    records = []
+    for cluster in groups:
+        gene_ids = np.asarray(result["names"][cluster], dtype=str)
+        gene_names = (
+            working.var.loc[gene_ids, "feature_name"].astype(str).to_numpy()
+            if "feature_name" in working.var else gene_ids
+        )
+        frame = pd.DataFrame({
+            "cluster": cluster, "gene_id": gene_ids, "gene_name": gene_names,
+            "score": np.asarray(result["scores"][cluster], dtype=float),
+            "log2_fold_change": np.asarray(
+                result["logfoldchanges"][cluster], dtype=float,
+            ),
+            "p_value": np.asarray(result["pvals"][cluster], dtype=float),
+            "p_value_adj": np.asarray(result["pvals_adj"][cluster], dtype=float),
+            "fraction_in_cluster": result["pts"].loc[
+                gene_ids, cluster
+            ].to_numpy(dtype=float),
+            "fraction_out_cluster": result["pts_rest"].loc[
+                gene_ids, cluster
+            ].to_numpy(dtype=float),
+            "n_spots_in_cluster": int((labels == cluster).sum()),
+            "n_spots_out_cluster": int((labels != cluster).sum()),
+        })
+        selected = frame.loc[
+            np.isfinite(frame["log2_fold_change"])
+            & np.isfinite(frame["p_value_adj"])
+            & (frame["p_value_adj"] < args.marker_fdr)
+            & (frame["log2_fold_change"] >= args.marker_min_log2fc)
+            & (frame["fraction_in_cluster"] >= args.marker_min_fraction)
+        ].head(args.top_markers_per_cluster).copy()
+        if not selected.empty:
+            selected.insert(1, "rank", np.arange(1, len(selected) + 1))
+            records.append(selected.loc[:, MARKER_COLUMNS])
+    markers = (
+        pd.concat(records, ignore_index=True) if records
+        else pd.DataFrame(columns=MARKER_COLUMNS)
+    )
+    print(f"Retained {len(markers):,} cluster marker rows", flush=True)
+    return markers
+
+
 def cluster_colors(n_clusters: int) -> list[str]:
     colors = list(CLUSTER_COLORS[:n_clusters])
     extra = n_clusters - len(colors)
@@ -436,6 +538,7 @@ def main() -> None:
         adata = combine_samples(paths, names, args.min_spots_per_gene)
         compute_pca(adata, args)
         integrate_and_cluster(adata, args)
+        markers = find_cluster_markers(adata, args)
 
         output_dir.mkdir(parents=True, exist_ok=True)
         plot_results(adata, output_dir, args)
@@ -452,6 +555,11 @@ def main() -> None:
         adata.var.loc[adata.var["highly_variable"]].to_csv(
             output_dir / "highly_variable_genes.csv", index_label="gene_id",
         )
+        markers.to_csv(output_dir / "cluster_markers.csv", index=False)
+        pd.DataFrame({
+            "cluster": adata.obs["leiden"].cat.categories.astype(str),
+            "annotation": "",
+        }).to_csv(output_dir / "cluster_annotation.csv", index=False)
 
         write_anndata(adata, output_dir / OUTPUT_NAMES[0])
         print(
