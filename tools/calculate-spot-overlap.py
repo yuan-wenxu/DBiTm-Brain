@@ -40,7 +40,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--taps-image", type=Path, required=True)
     parser.add_argument(
         "--taps-beta-image",
-        dest="taps_beta_image",
         type=Path,
         required=True,
     )
@@ -48,7 +47,6 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--taps-positions", type=Path, required=True)
     parser.add_argument(
         "--taps-beta-positions",
-        dest="taps_beta_positions",
         type=Path,
         required=True,
     )
