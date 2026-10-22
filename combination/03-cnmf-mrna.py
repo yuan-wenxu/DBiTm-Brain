@@ -20,7 +20,7 @@ from cnmf import cNMF
 from cnmf.cnmf import load_df_from_npz, save_df_to_npz
 
 
-COMPONENTS = (5, 10, 15, 20, 25, 30)
+COMPONENTS = (6, 8, 10, 12, 14, 16, 18, 20, 22, 24, 26, 28, 30)
 N_REPEATS = 100
 MAX_NMF_ITER = 1000
 N_TOP_GENES = 3000
