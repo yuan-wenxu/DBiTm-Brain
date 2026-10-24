@@ -27,7 +27,7 @@ BARCODE_PREFIXES = {"p7-rep1": "P7", "p35-rep1": "P35", "p60-rep1": "P60"}
 CLUSTER_COLORS = (
     "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
     "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
-    "#98DF8A", "#C49C94",
+    "#98DF8A", "#C49C94", "#00A087", "#7E8A97", "#B86B3E",
 )
 OUTPUT_NAMES = (
     "mrna-combined.r-annotated.h5ad", "spot_clusters.csv",
@@ -214,13 +214,7 @@ def attach_r_results(
         data.obs["sample"].astype(str).to_numpy(), metadata["sample"].to_numpy(),
     ):
         raise ValueError("R sample assignments disagree with the input H5ADs")
-    for column in metadata:
-        if column != "sample":
-            # Preserve QC/spatial columns; retain colliding R columns as r_*.
-            target = f"r_{column}" if column in data.obs else column
-            if target in data.obs:
-                raise ValueError(f"R metadata column collision: {target}")
-            data.obs[target] = metadata[column]
+    data.obs["age"] = metadata["age"]
     data.obs["seurat_clusters"] = pd.Categorical(
         metadata["seurat_clusters"], categories=labels.index, ordered=True,
     )
@@ -297,7 +291,7 @@ def plot_results(
         embedding[order, 0], embedding[order, 1], c=colors[order],
         s=1, linewidths=0, alpha=0.8,
     )
-    finish_plot(figure, axis, "R UMAP: annotations", annotation_colors,
+    finish_plot(figure, axis, "UMAP: annotations", annotation_colors,
                 plot_dir / "umap-annotations.png")
     for name in data.obs["sample"].cat.categories:
         selected = data.obs["sample"].eq(name).to_numpy()
@@ -333,7 +327,7 @@ def plot_results(
         ))
         axis.autoscale_view()
         axis.set_aspect("equal")
-        finish_plot(figure, axis, f"{name}: R annotations", annotation_colors,
+        finish_plot(figure, axis, f"{name}: annotations", annotation_colors,
                     plot_dir / f"{name}.spatial-annotations.png")
 
 

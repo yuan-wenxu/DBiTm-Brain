@@ -40,54 +40,38 @@ COLOR_MAP = LinearSegmentedColormap.from_list(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--input", type=Path, required=True,
-                        help="Current clustered H5AD; used only for labels.")
+                        help="H5AD containing sample and annotation labels.")
     parser.add_argument("--usage", type=Path, required=True,
                         help="Normalized usage CSV indexed by spot_id.")
-    parser.add_argument("--annotations", type=Path, required=True,
-                        help="Current cluster_annotation.csv.")
     parser.add_argument("--output-dir", type=Path, required=True,
                         help="Directory for the PNG heatmap only.")
     return parser.parse_args()
 
 
 def read_data(
-    input_path: Path, usage_path: Path, annotation_path: Path,
+    input_path: Path, usage_path: Path,
 ) -> tuple[pd.DataFrame, pd.DataFrame, list[str]]:
     source = ad.read_h5ad(input_path, backed="r")
     try:
-        required = {"sample", "leiden"}
+        required = {"sample", "annotation"}
         if not required <= set(source.obs.columns):
-            raise ValueError("H5AD requires sample and leiden labels")
+            raise ValueError("H5AD requires sample and annotation labels")
         if not source.obs_names.is_unique:
             raise ValueError("H5AD spot IDs must be unique")
-        metadata = source.obs[["sample", "leiden"]].copy()
+        metadata = source.obs[["sample", "annotation"]].copy()
     finally:
         source.file.close()
     if metadata.empty or metadata.isna().any().any():
         raise ValueError("Spot labels must be nonempty and nonmissing")
     if set(metadata["sample"].astype(str)) != set(SAMPLE_ORDER):
         raise ValueError("Expected P7, P35 and P60 rep1 samples")
-    annotations = pd.read_csv(
-        annotation_path, dtype=str, keep_default_na=False,
-        encoding="utf-8-sig",
-    )
-    if not {"cluster", "annotation"} <= set(annotations):
-        raise ValueError("Annotation CSV requires cluster and annotation")
-    annotations = annotations[["cluster", "annotation"]].copy()
-    for column in annotations:
-        annotations[column] = annotations[column].str.strip()
-    if (annotations.eq("").any().any()
-            or annotations["cluster"].duplicated().any()
-            or not annotations["cluster"].str.fullmatch(r"0|[1-9]\d*").all()):
-        raise ValueError("Require unique numeric clusters and nonblank labels")
-    labels = metadata["leiden"].astype(str)
-    if set(labels) != set(annotations["cluster"]):
-        raise ValueError("Annotation IDs must match the current H5AD clusters")
-    annotations = annotations.sort_values("cluster", key=lambda x: x.astype(int))
-    order = annotations["annotation"].drop_duplicates().tolist()
-    metadata["annotation"] = labels.map(
-        annotations.set_index("cluster")["annotation"],
-    )
+    labels = metadata["annotation"]
+    if labels.astype(str).str.strip().eq("").any():
+        raise ValueError("H5AD annotation labels must not be blank")
+    if isinstance(labels.dtype, pd.CategoricalDtype):
+        order = labels.cat.remove_unused_categories().cat.categories.tolist()
+    else:
+        order = labels.drop_duplicates().tolist()
     usage = pd.read_csv(
         usage_path, index_col="spot_id", dtype={"spot_id": str, "sample": str},
     )
@@ -202,16 +186,14 @@ def plot_heatmaps(
 
 
 def run(args: argparse.Namespace) -> None:
-    for name in ("input", "usage", "annotations", "output_dir"):
+    for name in ("input", "usage", "output_dir"):
         setattr(args, name, getattr(args, name).expanduser().resolve())
     output = args.output_dir / OUTPUT_NAME
     if args.output_dir.exists() and not args.output_dir.is_dir():
         raise ValueError("Output directory is a file")
     if output.exists():
         raise ValueError("Output exists; choose a new output directory")
-    metadata, usage, annotations = read_data(
-        args.input, args.usage, args.annotations,
-    )
+    metadata, usage, annotations = read_data(args.input, args.usage)
     means, counts = summarize_usage(metadata, usage, annotations)
     args.output_dir.mkdir(parents=True, exist_ok=True)
     plot_heatmaps(means, annotations, output)

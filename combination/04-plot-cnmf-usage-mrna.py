@@ -27,7 +27,7 @@ from utils import spatial_plot_data
 
 SAMPLE_ORDER = ("p7-rep1", "p35-rep1", "p60-rep1")
 AGE_LABELS = ("P7", "P35", "P60")
-CORTEX_ANNOTATIONS = ("L2/3/4", "L5", "L5/6", "L6")
+CORTEX_ANNOTATIONS = ("L2/3/4", "L5", "L6")
 PANEL_SIZE = 4
 SPOT_SIZE_UM = 50.0
 DPI = 300
@@ -54,8 +54,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True,
                         help="Directory for PNG figures only.")
     parser.add_argument(
-        "--annotations", type=Path,
-        help="Optional cluster_annotation.csv; select cortical-layer spots.",
+        "--cortex-only", action="store_true",
+        help="Select cortical-layer spots using H5AD obs['annotation'].",
     )
     return parser.parse_args()
 
@@ -83,8 +83,8 @@ def read_data(input_path: Path, usage_path: Path) -> tuple[
             raise ValueError(f"Missing spatial metadata: {sorted(missing)}")
         if not source.obs_names.is_unique:
             raise ValueError("Input spot IDs must be unique")
-        if "leiden" in source.obs:
-            required.append("leiden")
+        if "annotation" in source.obs:
+            required.append("annotation")
         data = ad.AnnData(obs=source.obs[required].copy())
         data.uns["spatial"] = source.uns.get("spatial", {})
     finally:
@@ -118,32 +118,16 @@ def read_data(input_path: Path, usage_path: Path) -> tuple[
 
 
 def select_cortex(
-    data: ad.AnnData, usage: pd.DataFrame, annotation_path: Path,
+    data: ad.AnnData, usage: pd.DataFrame,
 ) -> tuple[ad.AnnData, pd.DataFrame]:
-    if "leiden" not in data.obs or data.obs["leiden"].isna().any():
-        raise ValueError("Cortex selection requires nonmissing leiden labels")
-    annotations = pd.read_csv(
-        annotation_path, dtype=str, keep_default_na=False, encoding="utf-8-sig",
-    )
-    if not {"cluster", "annotation"} <= set(annotations):
-        raise ValueError("Annotation table requires cluster and annotation")
-    annotations = annotations[["cluster", "annotation"]].copy()
-    for column in annotations:
-        annotations[column] = annotations[column].str.strip()
-    if annotations.eq("").any().any():
-        raise ValueError("Cluster IDs and annotations must not be blank")
-    if annotations["cluster"].duplicated().any():
-        raise ValueError("Annotation table has duplicate cluster IDs")
-    labels = data.obs["leiden"].astype(str)
-    if set(labels) != set(annotations["cluster"]):
-        raise ValueError("Annotation cluster IDs must match the input H5AD")
-    mapping = annotations.set_index("cluster")["annotation"]
-    names = labels.map(mapping)
-    selected = names.isin(CORTEX_ANNOTATIONS)
+    if "annotation" not in data.obs or data.obs["annotation"].isna().any():
+        raise ValueError(
+            "Cortex selection requires nonmissing H5AD obs['annotation']"
+        )
+    selected = data.obs["annotation"].isin(CORTEX_ANNOTATIONS)
     if not selected.any():
         raise ValueError(f"No cortical annotations found: {CORTEX_ANNOTATIONS}")
     cortex = data[selected].copy()
-    cortex.obs["annotation"] = names.loc[cortex.obs_names]
     if set(cortex.obs["sample"].astype(str)) != set(SAMPLE_ORDER):
         raise ValueError("Cortical spots must be present at all three ages")
     # Preserve the fitted program contributions; do not refit or renormalize.
@@ -264,9 +248,8 @@ def run(args: argparse.Namespace) -> None:
     usage_path = args.usage.expanduser().resolve()
     output_dir = args.output_dir.expanduser().resolve()
     data, usage = read_data(input_path, usage_path)
-    if args.annotations is not None:
-        annotation_path = args.annotations.expanduser().resolve()
-        data, usage = select_cortex(data, usage, annotation_path)
+    if args.cortex_only:
+        data, usage = select_cortex(data, usage)
     panels = prepare_tissue_panels(data)
     outputs = [output_dir / f"{name.replace('_', '-')}.usage.png"
                for name in usage.columns]
@@ -278,7 +261,7 @@ def run(args: argparse.Namespace) -> None:
     output_dir.mkdir(parents=True, exist_ok=True)
     for name, output in zip(usage.columns, outputs, strict=True):
         plot_program(name, usage[name].to_numpy(), panels, output,
-                     cortex_only=args.annotations is not None)
+                     cortex_only=args.cortex_only)
         print(f"Saved {output.name}", flush=True)
     print(f"Saved {len(outputs)} PNG figures in {output_dir}")
 

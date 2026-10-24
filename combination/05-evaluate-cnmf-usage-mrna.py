@@ -18,7 +18,7 @@ from matplotlib.transforms import Bbox
 
 
 SAMPLE_ORDER = ("p7-rep1", "p35-rep1", "p60-rep1")
-CORTEX_ANNOTATIONS = ("L2/3/4", "L5", "L5/6", "L6")
+CORTEX_ANNOTATIONS = ("L2/3/4", "L5", "L6")
 SCOPE_NAMES = {
     "all-spots": "All spots", "cortical-layers": "Cortical layers",
 }
