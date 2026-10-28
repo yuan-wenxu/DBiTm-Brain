@@ -60,8 +60,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-spots-per-gene",
         type=int,
-        default=3,
-        help="Minimum spots in which a gene must be detected (default: 3).",
+        default=5,
+        help="Minimum spots in which a gene must be detected (default: 5).",
     )
     parser.add_argument(
         "--n-top-genes",
