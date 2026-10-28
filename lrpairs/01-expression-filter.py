@@ -25,37 +25,72 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
         "--min-pct", type=float, default=10.0,
-        help="Each gene must exceed this percentage of pooled cortical spots.",
+        help=(
+            "Each gene must exceed this percentage of pooled cortical spots; "
+            "complexes use the minimum subunit coverage."
+        ),
     )
     parser.add_argument("--labels", nargs="+", default=["L2/3/4", "L5", "L6"])
     return parser.parse_args()
 
 
 def map_gene(gene_id: str, symbol: str, var: pd.DataFrame) -> int:
-    if pd.notna(gene_id) and gene_id in var.index:
-        return int(var.index.get_loc(gene_id))
+    if pd.notna(gene_id):
+        matches = [
+            int(var.index.get_loc(candidate))
+            for candidate in gene_id.split("|")
+            if candidate in var.index
+        ]
+        if len(matches) == 1:
+            return matches[0]
+        if len(matches) > 1:
+            matching_symbols = [
+                index for index in matches
+                if var["feature_name"].iloc[index] == symbol
+            ]
+            return matching_symbols[0] if len(matching_symbols) == 1 else -1
     matches = np.flatnonzero(var["feature_name"].to_numpy() == symbol)
     return int(matches[0]) if len(matches) == 1 else -1
 
 
+def map_complex(
+    gene_ids: str, symbols: str, var: pd.DataFrame,
+) -> list[int]:
+    subunits = [symbol.strip() for symbol in symbols.split(";")]
+    id_groups = (
+        [group.strip() for group in gene_ids.split(";")]
+        if pd.notna(gene_ids) else [""] * len(subunits)
+    )
+    if not all(subunits) or len(id_groups) != len(subunits):
+        raise ValueError(f"Inconsistent subunit symbols and IDs: {symbols}")
+    return [
+        map_gene(gene_id, symbol, var)
+        for gene_id, symbol in zip(id_groups, subunits)
+    ]
+
+
 def filter_sample(
-    counts: sparse.csr_matrix, pairs: pd.DataFrame, indices: np.ndarray,
+    counts: sparse.csr_matrix, pairs: pd.DataFrame,
+    indices: dict[str, list[list[int]]],
     min_pct: float,
 ) -> pd.DataFrame:
     # Pool all selected cortical spots within this sample.
     pct = np.zeros(counts.shape[1])
     if counts.shape[0]:
         pct = np.asarray((counts > 0).mean(axis=0)).ravel() * 100
-    coverage = np.zeros(indices.shape)
-    mapped = indices >= 0
-    coverage[mapped] = pct[indices[mapped]]
+    coverage = np.zeros((len(pairs), 2))
+    for column, role in enumerate(("ligand", "receptor")):
+        for row, subunits in enumerate(indices[role]):
+            # Unmapped subunits leave the complex at zero coverage.
+            if all(index >= 0 for index in subunits):
+                coverage[row, column] = pct[subunits].min()
     result = pairs.copy()
     result["ligand_cortex_pct"] = coverage[:, 0]
     result["receptor_cortex_pct"] = coverage[:, 1]
-    keep = mapped.all(axis=1) & (coverage > min_pct).all(axis=1)
+    keep = (coverage > min_pct).all(axis=1)
     return (
-        result.loc[keep].drop_duplicates("LR Pair")
-        .sort_values("LR Pair").reset_index(drop=True)
+        result.loc[keep].drop_duplicates("lr_pair")
+        .sort_values("lr_pair").reset_index(drop=True)
     )
 
 
@@ -115,14 +150,39 @@ def main() -> None:
     args = parse_args()
     if not 0 < args.min_pct <= 100:
         raise ValueError("--min-pct must be in (0, 100]")
-    database = pd.read_csv(args.database)
-    tokens = database["LR Pair"].str.split()
-    if database.empty or not tokens.str.len().eq(2).all():
-        raise ValueError("Every LR Pair must contain two gene symbols")
+    database = pd.read_csv(args.database, encoding="utf-8-sig")
+    required_columns = {
+        "lr_pair", "ligand_gene_symbols", "receptor_gene_symbols",
+        "ligand_ensembl_ids", "receptor_ensembl_ids",
+    }
+    missing_columns = required_columns - set(database.columns)
+    if missing_columns:
+        raise ValueError(
+            f"Database is missing columns: {sorted(missing_columns)}"
+        )
+    if database.empty:
+        raise ValueError("LR database is empty")
+    for column in ("lr_pair", "ligand_gene_symbols",
+                   "receptor_gene_symbols"):
+        if database[column].isna().any() or database[column].eq("").any():
+            raise ValueError(f"Database contains missing {column} values")
+    expected_pairs = (
+        database["ligand_gene_symbols"] + " "
+        + database["receptor_gene_symbols"]
+    )
+    if not database["lr_pair"].eq(expected_pairs).all():
+        raise ValueError("lr_pair does not match ligand and receptor symbols")
+    complex_pairs = (
+        database["ligand_gene_symbols"].str.contains(";", regex=False)
+        | database["receptor_gene_symbols"].str.contains(";", regex=False)
+    )
+    print(f"Including {int(complex_pairs.sum())} multi-gene LR pairs")
     pairs = pd.DataFrame({
-        "LR Pair": tokens.str.join(" "),
-        "ligand": tokens.str[0], "receptor": tokens.str[1],
-    })
+        "lr_pair": database["lr_pair"],
+        "ligand": database["ligand_gene_symbols"],
+        "receptor": database["receptor_gene_symbols"],
+    }).reset_index(drop=True)
+    database = database.reset_index(drop=True)
     data = ad.read_h5ad(args.h5ad)
     if "counts" not in data.layers:
         raise ValueError(f"{args.h5ad}: missing layers['counts']")
@@ -138,17 +198,22 @@ def main() -> None:
     if any(not re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9_.-]*", sample)
            for sample in samples):
         raise ValueError("Sample names must be safe filenames")
-    indices = np.column_stack([
-        [map_gene(gene_id, symbol, data.var)
-         for gene_id, symbol in zip(
-             database[f"{role.title()} ENSEMBL ID"], pairs[role],
-         )]
+    indices = {
+        role: [
+            map_complex(gene_id, symbol, data.var)
+            for gene_id, symbol in zip(
+                database[f"{role}_ensembl_ids"], pairs[role],
+            )
+        ]
         for role in ("ligand", "receptor")
-    ])
-    for column, role in enumerate(("ligand", "receptor")):
+    }
+    for role in ("ligand", "receptor"):
         pairs[f"{role}_feature_id"] = [
-            data.var_names[index] if index >= 0 else ""
-            for index in indices[:, column]
+            ";".join(
+                data.var_names[index] if index >= 0 else ""
+                for index in subunits
+            )
+            for subunits in indices[role]
         ]
     counts = sparse.csr_matrix(data.layers["counts"], dtype=float)[cortex]
     del data
@@ -169,17 +234,16 @@ def main() -> None:
         )
         result.to_csv(args.output_dir / f"{sample}.lr-pairs.csv",
                       index=False, encoding="utf-8-sig")
-        pair_sets[sample] = set(result["LR Pair"])
+        pair_sets[sample] = set(result["lr_pair"])
         pair_tables.append(result[[
-            "LR Pair", "ligand_feature_id", "receptor_feature_id",
+            "lr_pair", "ligand_feature_id", "receptor_feature_id",
         ]])
         print(f"{sample}: {len(result)} LR pairs")
     shared_names = set.intersection(*pair_sets.values())
     shared = pd.concat(pair_tables, ignore_index=True)
-    shared = shared.loc[shared["LR Pair"].isin(shared_names)].drop_duplicates()
-    if shared["LR Pair"].duplicated().any():
+    shared = shared.loc[shared["lr_pair"].isin(shared_names)].drop_duplicates()
+    if shared["lr_pair"].duplicated().any():
         raise ValueError("Shared LR pairs have inconsistent feature IDs")
-    shared = shared.rename(columns={"LR Pair": "lr_pair"})
     shared = shared.sort_values("lr_pair")
     shared.to_csv(args.output_dir / "shared-lr-pairs.csv",
                   index=False, encoding="utf-8-sig")

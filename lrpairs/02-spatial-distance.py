@@ -29,16 +29,17 @@ def parse_args() -> argparse.Namespace:
         help="Directory containing SAMPLE.lr-pairs.csv from script 01.",
     )
     parser.add_argument("--output-dir", type=Path, required=True)
-    parser.add_argument("--samples", nargs="+")
     parser.add_argument("--labels", nargs="+", default=["L2/3/4", "L5", "L6"])
-    parser.add_argument("--min-counts", type=int, default=3)
     parser.add_argument(
-        "--expression-quantile", type=float, default=0.75,
-        help="Quantile of each gene's nonzero cortical CP10K (0 to 1).",
+        "--min-counts", type=int, default=3,
+        help="Minimum raw counts required for every subunit in a spot.",
     )
     parser.add_argument(
-        "--pixel-size-um", type=float,
-        help="Override source_pixel_size_um for all selected samples.",
+        "--expression-quantile", type=float, default=0.75,
+        help=(
+            "Quantile of nonzero cortical CP10K (0 to 1); complexes use "
+            "the minimum subunit expression in each spot."
+        ),
     )
     parser.add_argument("--bins", type=int, default=100)
     args = parser.parse_args()
@@ -48,33 +49,43 @@ def parse_args() -> argparse.Namespace:
         parser.error("--min-counts and --bins must be positive")
     if not 0 <= args.expression_quantile <= 1:
         parser.error("--expression-quantile must be in [0, 1]")
-    if args.pixel_size_um is not None and (
-        not np.isfinite(args.pixel_size_um) or args.pixel_size_um <= 0
-    ):
-        parser.error("--pixel-size-um must be finite and positive")
     return args
 
 
-def gene_index(row: pd.Series, role: str, var: pd.DataFrame) -> int:
-    feature_id = row.get(f"{role}_feature_id")
-    if pd.notna(feature_id) and str(feature_id):
-        if feature_id not in var.index:
-            raise ValueError(f"Feature ID absent from H5AD: {feature_id}")
-        return int(var.index.get_loc(feature_id))
-    matches = np.flatnonzero(var["feature_name"].to_numpy() == row[role])
-    if len(matches) != 1:
-        raise ValueError(
-            f"Cannot uniquely map {role} {row[role]}; rerun script 01 "
-            "to retain feature IDs"
-        )
-    return int(matches[0])
+def gene_indices(
+    row: pd.Series, role: str, var: pd.DataFrame,
+) -> tuple[int, ...]:
+    symbols = [symbol.strip() for symbol in row[role].split(";")]
+    feature_ids = row.get(f"{role}_feature_id")
+    ids = (
+        [feature_id.strip() for feature_id in str(feature_ids).split(";")]
+        if pd.notna(feature_ids) and str(feature_ids) else [None] * len(symbols)
+    )
+    if not all(symbols) or len(ids) != len(symbols):
+        raise ValueError(f"Inconsistent {role} subunit symbols and feature IDs")
+    columns = []
+    for symbol, feature_id in zip(symbols, ids):
+        if feature_id is not None:
+            if feature_id not in var.index:
+                raise ValueError(f"Feature ID absent from H5AD: {feature_id}")
+            columns.append(int(var.index.get_loc(feature_id)))
+            continue
+        matches = np.flatnonzero(var["feature_name"].to_numpy() == symbol)
+        if len(matches) != 1:
+            raise ValueError(
+                f"Cannot uniquely map {role} subunit {symbol}; "
+                "rerun script 01 to retain feature IDs"
+            )
+        columns.append(int(matches[0]))
+    return tuple(columns)
 
 
 def high_expression(
-    counts: sparse.csc_matrix, column: int, totals: np.ndarray,
+    counts: sparse.csc_matrix, columns: tuple[int, ...], totals: np.ndarray,
     min_counts: int, quantile: float,
 ) -> np.ndarray:
-    raw = counts[:, column].toarray().ravel()
+    """Use the least expressed subunit in each spot as complex expression."""
+    raw = counts[:, list(columns)].toarray().min(axis=1)
     cp10k = raw / totals * 1e4
     positive = cp10k[raw > 0]
     threshold = (
@@ -120,20 +131,20 @@ def sample_distances(
     cache = {}
     results = []
     for _, row in pairs.iterrows():
-        columns = [gene_index(row, role, var)
+        columns = [gene_indices(row, role, var)
                    for role in ("ligand", "receptor")]
-        for column in columns:
-            if column not in cache:
-                cache[column] = high_expression(
-                    counts, column, totals, args.min_counts,
+        for subunits in columns:
+            if subunits not in cache:
+                cache[subunits] = high_expression(
+                    counts, subunits, totals, args.min_counts,
                     args.expression_quantile,
                 )
-        ligand, receptor = [cache[column] for column in columns]
+        ligand, receptor = [cache[subunits] for subunits in columns]
         result = {
-            "sample": sample, "LR Pair": row["LR Pair"],
+            "sample": sample, "lr_pair": row["lr_pair"],
             "ligand": row["ligand"], "receptor": row["receptor"],
-            "ligand_feature_id": var.index[columns[0]],
-            "receptor_feature_id": var.index[columns[1]],
+            "ligand_feature_id": ";".join(var.index[list(columns[0])]),
+            "receptor_feature_id": ";".join(var.index[list(columns[1])]),
             "n_ligand_high": ligand.size, "n_receptor_high": receptor.size,
         }
         for direction, source, target in (
@@ -210,19 +221,15 @@ def main() -> None:
     tables = {}
     for path in files:
         sample = path.name.removesuffix(".lr-pairs.csv")
-        if args.samples and sample not in args.samples:
-            continue
         table = pd.read_csv(path)
-        required = ["LR Pair", "ligand", "receptor"]
+        required = ["lr_pair", "ligand", "receptor"]
         if (not set(required) <= set(table)
                 or table[required].isna().any().any()):
             raise ValueError(f"{path}: missing LR pair identifiers")
-        table["LR Pair"] = table["LR Pair"].str.split().str.join(" ")
-        if table["LR Pair"].duplicated().any():
+        table["lr_pair"] = table["lr_pair"].str.split().str.join(" ")
+        if table["lr_pair"].duplicated().any():
             raise ValueError(f"{path}: duplicate LR pairs")
         tables[sample] = table
-    if args.samples and set(args.samples) - set(tables):
-        raise ValueError("Missing LR CSV for a requested sample")
     if not any(len(table) for table in tables.values()):
         raise ValueError("No LR pairs selected from the sample CSVs")
     data = ad.read_h5ad(args.h5ad)
@@ -251,12 +258,13 @@ def main() -> None:
                 & obs["annotation"].isin(args.labels)).to_numpy()
         if not mask.any():
             raise ValueError(f"{sample}: no selected cortical spots")
-        pixel_size = args.pixel_size_um
-        if pixel_size is None:
-            pixel_size = metadata.get(sample, {}).get("source_pixel_size_um")
+        pixel_size = metadata.get(sample, {}).get("source_pixel_size_um")
         if (pixel_size is None or not np.isfinite(pixel_size)
                 or pixel_size <= 0):
-            raise ValueError(f"{sample}: set --pixel-size-um; no valid scale")
+            raise ValueError(
+                f"{sample}: metadata['source_pixel_size_um'] "
+                "must be finite and positive"
+            )
         results.extend(sample_distances(
             sample, obs.loc[mask], counts[mask].tocsc(), var, pairs,
             float(pixel_size), args,
