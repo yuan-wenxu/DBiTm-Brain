@@ -1,4 +1,4 @@
-"""Filter cortical LR pairs per sample and plot their overlap."""
+"""Filter cortical LR pairs, export their intersection and plot overlap."""
 
 import argparse
 from pathlib import Path
@@ -161,6 +161,7 @@ def main() -> None:
         raise ValueError("Cortical observations contain empty libraries")
     args.output_dir.mkdir(parents=True, exist_ok=False)
     pair_sets = {}
+    pair_tables = []
     for sample in samples:
         mask = obs["sample"].astype(str).eq(sample).to_numpy()
         result = filter_sample(
@@ -169,7 +170,20 @@ def main() -> None:
         result.to_csv(args.output_dir / f"{sample}.lr-pairs.csv",
                       index=False, encoding="utf-8-sig")
         pair_sets[sample] = set(result["LR Pair"])
+        pair_tables.append(result[[
+            "LR Pair", "ligand_feature_id", "receptor_feature_id",
+        ]])
         print(f"{sample}: {len(result)} LR pairs")
+    shared_names = set.intersection(*pair_sets.values())
+    shared = pd.concat(pair_tables, ignore_index=True)
+    shared = shared.loc[shared["LR Pair"].isin(shared_names)].drop_duplicates()
+    if shared["LR Pair"].duplicated().any():
+        raise ValueError("Shared LR pairs have inconsistent feature IDs")
+    shared = shared.rename(columns={"LR Pair": "lr_pair"})
+    shared = shared.sort_values("lr_pair")
+    shared.to_csv(args.output_dir / "shared-lr-pairs.csv",
+                  index=False, encoding="utf-8-sig")
+    print(f"Shared across {len(samples)} samples: {len(shared)} LR pairs")
     plot_overlap(pair_sets, args.output_dir / "lr-pairs-venn.png")
 
 
