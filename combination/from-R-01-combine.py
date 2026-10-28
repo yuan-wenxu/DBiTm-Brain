@@ -220,6 +220,18 @@ def combine_samples(args: argparse.Namespace) -> ad.AnnData:
     combined = ad.concat(samples, join="outer", merge="first", fill_value=0)
     if not combined.obs_names.is_unique:
         raise ValueError("Combined spot IDs must be unique")
+    annotations = pd.concat([sample.var for sample in samples])
+    repeated = annotations.loc[annotations.index.duplicated(keep=False)]
+    if not repeated.empty:
+        conflicts = repeated.groupby(level=0, sort=False).nunique(
+            dropna=False
+        ).gt(1).any(axis=1)
+        if conflicts.any():
+            raise ValueError(
+                f"Conflicting gene annotations for {conflicts.index[conflicts][0]}"
+            )
+    annotations = annotations.loc[~annotations.index.duplicated()]
+    combined.var = annotations.loc[combined.var_names].copy()
     combined.obs["sample"] = pd.Categorical(
         combined.obs["sample"], categories=args.sample_names,
     )
