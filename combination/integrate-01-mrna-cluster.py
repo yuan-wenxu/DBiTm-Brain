@@ -62,7 +62,13 @@ def parse_args() -> argparse.Namespace:
         "--output-dir", type=Path, required=True,
         help="Result directory.",
     )
-    parser.add_argument("--min-spots-per-gene", type=int, default=3)
+    parser.add_argument(
+        "--min-spots-per-gene", type=int, default=5,
+        help=(
+            "Minimum spots with counts > 0 per gene within each sample "
+            "before intersecting gene sets (default: 5)."
+        ),
+    )
     parser.add_argument("--n-top-genes", type=int, default=3000)
     parser.add_argument("--n-components", type=int, default=50)
     parser.add_argument("--pearson-theta", type=float, default=100.0)
@@ -185,12 +191,27 @@ def combine_samples(
         if source.n_obs < 3 or source.n_vars < 2:
             raise ValueError(f"{path}: at least three spots and two genes are required")
         counts = validated_counts(source, path)
+        detected = np.asarray((counts > 0).sum(axis=0)).ravel()
+        keep = detected >= min_spots
+        if keep.sum() < 2:
+            raise ValueError(
+                f"{path}: fewer than two genes detected in at least "
+                f"{min_spots} spots within this sample"
+            )
+        print(
+            f"{name}: retained {int(keep.sum()):,}/{source.n_vars:,} "
+            f"genes detected in >= {min_spots} spots",
+            flush=True,
+        )
         # Retain gene annotations, but not single-sample gene QC statistics.
         columns = [
             column for column in ("feature_name", "feature_type", "mt", "hb")
             if column in source.var
         ]
-        sample = ad.AnnData(X=counts, obs=source.obs.copy(), var=source.var[columns].copy())
+        sample = ad.AnnData(
+            X=counts[:, keep], obs=source.obs.copy(),
+            var=source.var.loc[keep, columns].copy(),
+        )
         sample.obs["original_barcode"] = source.obs_names.astype(str)
         prefix = BARCODE_PREFIXES.get(name, name)
         sample.obs_names = prefix + "_" + source.obs_names.astype(str)
@@ -210,7 +231,9 @@ def combine_samples(
     for sample in samples[1:]:
         common_genes = common_genes.intersection(sample.var_names, sort=False)
     if len(common_genes) < 2:
-        raise ValueError("Fewer than two shared gene IDs; align gene identifiers first")
+        raise ValueError(
+            "Fewer than two shared gene IDs remain after per-sample filtering"
+        )
     aligned = [sample[:, common_genes].copy() for sample in samples]
     for column in ("feature_name", "feature_type"):
         reference = aligned[0].var.get(column)
@@ -225,19 +248,16 @@ def combine_samples(
         raise ValueError("Combined spot IDs are not unique; rename sample labels")
     combined.obs["sample"] = pd.Categorical(combined.obs["sample"], categories=names)
     combined.uns["spatial"] = spatial_libraries
-    detected = np.asarray((combined.X > 0).sum(axis=0)).ravel()
-    keep = detected >= min_spots
-    if keep.sum() < 2:
-        raise ValueError("Fewer than two genes survive --min-spots-per-gene")
-    combined = combined[:, keep].copy()
     if np.any(np.asarray(combined.X.sum(axis=1)).ravel() <= 0):
         raise ValueError("Some spots have no counts after shared-gene filtering")
     combined.layers["counts"] = combined.X.copy()
-    combined.var["n_cells_by_counts"] = detected[keep]
+    combined.var["n_cells_by_counts"] = np.asarray(
+        (combined.X > 0).sum(axis=0)
+    ).ravel()
 
     print(
-        f"Combined {combined.n_obs:,} spots; {len(common_genes):,} shared genes, "
-        f"{combined.n_vars:,} retained after filtering", flush=True,
+        f"Combined {combined.n_obs:,} spots; {combined.n_vars:,} shared "
+        "genes retained after per-sample filtering", flush=True,
     )
     return combined
 

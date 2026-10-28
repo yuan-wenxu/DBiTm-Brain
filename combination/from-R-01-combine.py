@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Concatenate QC mRNA H5ADs and import R UMAP, clusters and labels."""
+"""Filter genes per sample, combine mRNA, and import R annotations."""
 
 from __future__ import annotations
 
@@ -54,10 +54,19 @@ def parse_args() -> argparse.Namespace:
         help="Folder containing the three R-exported CSV files.",
     )
     parser.add_argument("--output-dir", type=Path, required=True)
+    parser.add_argument(
+        "--min-spots-per-gene", type=int, default=5,
+        help=(
+            "Minimum spots with counts > 0 per gene within each sample "
+            "(default: 5)."
+        ),
+    )
     parser.add_argument("--spot-size-um", type=float, default=50.0)
     args = parser.parse_args()
     if len(args.inputs) < 2:
         parser.error("At least two input samples are required")
+    if args.min_spots_per_gene < 1:
+        parser.error("--min-spots-per-gene must be at least 1")
     args.sample_names = args.sample_names or [
         path.name.removesuffix(".qc.h5ad").replace("-mrna-", "-")
         for path in args.inputs
@@ -169,13 +178,31 @@ def combine_samples(args: argparse.Namespace) -> ad.AnnData:
                 or not np.allclose(counts.data, np.rint(counts.data),
                                    rtol=0, atol=1e-5)):
             raise ValueError(f"{path}: counts must be nonnegative integers")
+        detected = np.asarray((counts > 0).sum(axis=0)).ravel()
+        keep = detected >= args.min_spots_per_gene
+        if not keep.any():
+            raise ValueError(
+                f"{path}: no genes detected in at least "
+                f"{args.min_spots_per_gene} spots within this sample"
+            )
+        counts = counts[:, keep]
+        if np.any(np.asarray(counts.sum(axis=1)).ravel() <= 0):
+            raise ValueError(
+                f"{path}: some spots have no counts after gene filtering"
+            )
+        print(
+            f"{name}: retained {int(keep.sum()):,}/{source.n_vars:,} "
+            f"genes detected in >= {args.min_spots_per_gene} spots",
+            flush=True,
+        )
         # Keep expression and QC metadata; discard single-sample embeddings.
         var_columns = [
             column for column in ("feature_name", "feature_type", "mt", "hb")
             if column in source.var
         ]
         sample = ad.AnnData(
-            X=counts, obs=source.obs.copy(), var=source.var[var_columns].copy(),
+            X=counts, obs=source.obs.copy(),
+            var=source.var.loc[keep, var_columns].copy(),
         )
         sample.obs["original_barcode"] = source.obs_names.astype(str)
         sample.obs_names = prefix + "_" + source.obs_names.astype(str)
