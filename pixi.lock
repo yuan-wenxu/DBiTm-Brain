@@ -428,6 +428,7 @@ environments:
       - conda: https://conda.anaconda.org/conda-forge/noarch/yq-4.4.0-pyh5ded981_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zarr-3.4.0-pyhc364b38_0.conda
       - conda: https://conda.anaconda.org/conda-forge/noarch/zipp-4.1.0-pyhcf101f3_0.conda
+      - pypi: git+https://github.com/yuan-wenxu/SpaLRFactor#60e4205c15406ef13ce5b4f575bcd33f2d130b9d
       - pypi: https://files.pythonhosted.org/packages/b5/50/ddd4e791070b3f6f2d072f191639d0462906d058b8f5b18a271a6395094d/cnmf-1.7.1-py3-none-any.whl
       - pypi: https://files.pythonhosted.org/packages/cf/f7/3367feadd4ab56783b0971c9b7edfbdd68e0c70ce877949a5dd2117ed4a0/palettable-3.3.3-py2.py3-none-any.whl
   rctd:
@@ -7379,6 +7380,16 @@ packages:
   - pkg:pypi/zipp?source=hash-mapping
   size: 24190
   timestamp: 1779159948016
+- pypi: git+https://github.com/yuan-wenxu/SpaLRFactor#60e4205c15406ef13ce5b4f575bcd33f2d130b9d
+  name: spalrfactor
+  version: 0.1.0
+  requires_dist:
+  - anndata>=0.10,<1
+  - numpy>=1.26,<3
+  - pandas>=2.1,<4
+  - scipy>=1.11,<2
+  - scikit-learn>=1.4,<2
+  requires_python: '>=3.11'
 - pypi: https://files.pythonhosted.org/packages/62/ef/551739c4437c638c3c88c737632e27783a131017821982c70b6366264c42/rctd_py-0.3.9-py3-none-any.whl
   name: rctd-py
   version: 0.3.9
