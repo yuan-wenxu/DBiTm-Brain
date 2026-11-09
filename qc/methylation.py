@@ -18,12 +18,12 @@ import pandas as pd
 from matplotlib.patches import Patch
 
 SAMPLE_COLORS = {
-    "P35-M1-S1-TAPS": "#A73030",
+    "P35-M1-S1-TAPS": "#E64B35",
     "P35-M2-S2-beta": "#E64B35",
-    "P60-M1-S1-TAPS": "#2F5597",
+    "P60-M1-S1-TAPS": "#4DBBD5",
     "P60-M2-S2-beta": "#4DBBD5",
     "P60-M2-S11-TAPS": "#CC79A7",
-    "P60-M2-S12-beta": "#7E57C2",
+    "P60-M2-S12-beta": "#CC79A7",
 }
 METHOD_HATCHES = {"TAPS": "", "TAPS-beta": "////"}
 

@@ -5,7 +5,6 @@ from __future__ import annotations
 
 import argparse
 import re
-from collections import Counter
 from pathlib import Path
 
 import anndata as ad
@@ -19,11 +18,11 @@ from matplotlib.ticker import FuncFormatter, MaxNLocator
 
 
 QC_COLOR = "#4DBBD5"
-AGE_COLORS = {
-    "p4": "#A73030",
-    "p7": "#E64B35",
-    "p35": "#2F5597",
-    "p60": "#4DBBD5",
+SAMPLE_COLORS = {
+    "P7-M1-S3-mRNA": "#FFE082",
+    "P35-M1-S3-mRNA": "#E64B35",
+    "P60-M1-S3-mRNA": "#4DBBD5",
+    "P60-M3-S2-mRNA": "#CC79A7",
 }
 OUTPUT_NAME = "mrna-umi-gene-violin.png"
 
@@ -31,8 +30,9 @@ OUTPUT_NAME = "mrna-umi-gene-violin.png"
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--inputs", nargs="+", type=Path, required=True,
-        help="mRNA H5ADs; sample names come from filenames.",
+        "--input", nargs=2, action="append", required=True,
+        metavar=("SAMPLE", "FILE"),
+        help="Sample name and mRNA H5AD. Repeat for multiple samples.",
     )
     parser.add_argument(
         "--output-dir", type=Path, required=True,
@@ -41,33 +41,11 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
-def infer_sample_name(path: Path) -> str:
-    name = path.name.removesuffix(".h5ad").removesuffix(".qc")
-    name = name.replace("-mrna-", "-")
-    if not name.strip():
-        raise ValueError(f"Cannot infer sample name from {path.name}")
-    return name
-
-
 def sample_sort_key(name: str) -> tuple[tuple[int, int | str], ...]:
     return tuple(
         (0, int(part)) if part.isdigit() else (1, part.casefold())
         for part in re.split(r"(\d+)", name)
     )
-
-
-def sample_labels(names: list[str]) -> list[str]:
-    matches = [re.fullmatch(r"p(\d+)-rep(\d+)", name, re.I) for name in names]
-    ages = Counter(match.group(1) for match in matches if match is not None)
-    labels = []
-    for name, match in zip(names, matches, strict=True):
-        if match is None:
-            labels.append(name)
-        elif ages[match.group(1)] == 1:
-            labels.append(f"P{match.group(1)}")
-        else:
-            labels.append(f"P{match.group(1)}-rep{match.group(2)}")
-    return labels
 
 
 def read_count_metrics(path: Path) -> tuple[np.ndarray, np.ndarray]:
@@ -120,19 +98,16 @@ def plot_violins(
         "legend.fontsize": 5,
     })
     names = sorted(metrics, key=sample_sort_key)
-    labels = sample_labels(names)
+    labels = names
     rotate_labels = len(names) > 8 or any(len(label) > 12 for label in labels)
-    figure, axes = plt.subplots(2, 1, figsize=(4, 3), sharex=True)
+    figure, axes = plt.subplots(2, 1, figsize=(4, 2), sharex=True)
     try:
         for metric, (axis, ylabel) in enumerate(zip(
             axes, ("Number of UMIs", "Number of genes"), strict=True,
         )):
             maximum = 0.0
             for position, sample in enumerate(names):
-                age = re.match(r"(p\d+)(?:[-_.]|$)", sample, re.I)
-                color = AGE_COLORS.get(
-                    age.group(1).lower() if age else "", QC_COLOR,
-                )
+                color = SAMPLE_COLORS.get(sample, QC_COLOR)
                 values = metrics[sample][metric]
                 maximum = max(maximum, float(values.max()))
                 if len(values) > 1 and np.ptp(values) > 0:
@@ -149,15 +124,19 @@ def plot_violins(
                               [values[0], values[0]], color=color,
                               linewidth=1)
                 median = float(np.median(values))
-                axis.plot(
-                    position, median, "o", markersize=3,
-                    markerfacecolor="white", markeredgecolor="#2F5597",
-                    markeredgewidth=0.5, zorder=3,
+                axis.hlines(
+                    median, position - 0.125, position + 0.125,
+                    colors="#222222", linewidths=0.7, zorder=3,
                 )
                 axis.annotate(
                     median_label(median), (position, median),
-                    xytext=(0, 5), textcoords="offset points",
+                    xytext=(0, 4), textcoords="offset points",
                     ha="center", va="bottom", fontsize=5,
+                    bbox={
+                        "facecolor": "white", "edgecolor": "none",
+                        "alpha": 0.85, "pad": 0.5,
+                    },
+                    zorder=4,
                 )
             locator = MaxNLocator(nbins=4)
             upper = locator.tick_values(0, maximum * 1.1 or 1.0)[-1]
@@ -185,16 +164,20 @@ def plot_violins(
 
 
 def run(args: argparse.Namespace) -> None:
-    paths = [path.expanduser().resolve() for path in args.inputs]
-    names = [infer_sample_name(path) for path in paths]
+    samples = [
+        (name, Path(path).expanduser().resolve()) for name, path in args.input
+    ]
+    names = [name for name, _ in samples]
+    if any(not name.strip() for name in names):
+        raise ValueError("Sample names must not be blank")
     if len(set(names)) != len(names):
-        raise ValueError("Input H5AD filenames must identify unique samples")
+        raise ValueError("Sample names must be unique")
     output_dir = args.output_dir.expanduser().resolve()
     output = output_dir / OUTPUT_NAME
     if output.exists():
         raise ValueError(f"Output already exists: {output}")
     metrics = {}
-    for name, path in zip(names, paths, strict=True):
+    for name, path in samples:
         umis, genes = read_count_metrics(path)
         metrics[name] = (umis, genes)
         print(f"{name}: {len(umis):,} spots; "

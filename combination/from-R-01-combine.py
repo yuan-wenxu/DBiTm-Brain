@@ -18,17 +18,22 @@ matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Patch, Rectangle
+from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 from utils import spatial_plot_data, write_anndata
 
 
-BARCODE_PREFIXES = {"p7-rep1": "P7", "p35-rep1": "P35", "p60-rep1": "P60"}
+BARCODE_PREFIXES = {"P7-M1-S3-mRNA": "P7-M1-S3-mRNA", 
+                    "P35-M1-S3-mRNA": "P35-M1-S3-mRNA", 
+                    "P60-M1-S3-mRNA": "P60-M1-S3-mRNA", 
+                    "P60-M3-S2-mRNA": "P60-M3-S2-mRNA"}
 CLUSTER_COLORS = (
     "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
     "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
     "#98DF8A", "#C49C94", "#00A087", "#7E8A97", "#B86B3E",
 )
+CORTICAL_ANNOTATIONS = ("L2/3", "L4", "L5", "L6")
 OUTPUT_NAMES = (
     "mrna-combined.r-annotated.h5ad", "spot_clusters.csv",
     "cluster_annotation.csv", "sample_cluster_counts.csv", "plots",
@@ -243,6 +248,13 @@ def combine_samples(args: argparse.Namespace) -> ad.AnnData:
     return combined
 
 
+def annotation_order(labels: pd.DataFrame) -> list[str]:
+    annotations = list(pd.unique(labels["annotation"]))
+    return [label for label in CORTICAL_ANNOTATIONS if label in annotations] + [
+        label for label in annotations if label not in CORTICAL_ANNOTATIONS
+    ]
+
+
 def attach_r_results(
     data: ad.AnnData, metadata: pd.DataFrame, umap: pd.DataFrame,
     labels: pd.DataFrame,
@@ -259,7 +271,7 @@ def attach_r_results(
     )
     annotations = metadata["seurat_clusters"].map(labels["annotation"])
     data.obs["annotation"] = pd.Categorical(
-        annotations, categories=pd.unique(labels["annotation"]),
+        annotations, categories=annotation_order(labels),
     )
     data.obsm["X_umap"] = umap.loc[data.obs_names].to_numpy(dtype=float)
 
@@ -278,7 +290,32 @@ def color_maps(labels: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
             )
         cluster_colors[cluster] = color
         annotation_colors.setdefault(row["annotation"], color)
-    return cluster_colors, annotation_colors
+    return cluster_colors, {
+        label: annotation_colors[label] for label in annotation_order(labels)
+    }
+
+
+def add_scale_bar(
+    axis: plt.Axes, units_per_coordinate: float, unit: str,
+) -> None:
+    width = abs(float(np.diff(axis.get_xlim())[0]))
+    height = abs(float(np.diff(axis.get_ylim())[0]))
+    target = width * units_per_coordinate / 5
+    magnitude = 10 ** np.floor(np.log10(target))
+    length = max(
+        value * magnitude for value in (1, 2, 5)
+        if value * magnitude <= target
+    )
+    bar = AnchoredSizeBar(
+        axis.transData, length / units_per_coordinate, f"{length:g} {unit}",
+        loc="lower left", pad=0.4, borderpad=0.5, sep=3,
+        frameon=True, size_vertical=height * 0.005, color="black",
+        fontproperties={"size": 5},
+    )
+    bar.patch.set_facecolor("white")
+    bar.patch.set_alpha(0.85)
+    bar.patch.set_edgecolor("none")
+    axis.add_artist(bar)
 
 
 def finish_plot(
@@ -294,13 +331,12 @@ def finish_plot(
         borderaxespad=0, labelspacing=0.25,
         ncol=1,
     )
-    # Preserve the 3 x 2 inch canvas, including the reserved legend area.
-    figure.savefig(path, dpi=300, bbox_inches=figure.bbox_inches, pad_inches=0)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
 def create_plot() -> tuple[plt.Figure, plt.Axes]:
-    figure, axis = plt.subplots(figsize=(3, 2))
+    figure, axis = plt.subplots(figsize=(4, 2))
     figure.subplots_adjust(left=0.02, right=0.64, bottom=0.04, top=0.90)
     return figure, axis
 
@@ -317,8 +353,11 @@ def plot_results(
         "xtick.labelsize": 5, "ytick.labelsize": 5, "legend.fontsize": 5,
     })
     plot_dir = output / "plots"
-    plot_dir.mkdir()
+    plot_dir.mkdir(exist_ok=True)
     cluster_colors, annotation_colors = color_maps(labels)
+    data.obs["annotation"] = data.obs["annotation"].cat.reorder_categories(
+        list(annotation_colors),
+    )
     data.uns["seurat_clusters_colors"] = list(cluster_colors.values())
     data.uns["annotation_colors"] = list(annotation_colors.values())
     colors = data.obs["annotation"].astype(str).map(annotation_colors).to_numpy()
@@ -343,6 +382,7 @@ def plot_results(
             axis.imshow(image, cmap="gray", origin="upper")
             axis.set_xlim(0, image.shape[1])
             axis.set_ylim(image.shape[0], 0)
+            scale_units, scale_unit = pixel_size, "µm"
         elif {"array_row", "array_col"} <= set(sample.obs):
             x = sample.obs["array_col"].to_numpy(dtype=float)
             y = sample.obs["array_row"].to_numpy(dtype=float)
@@ -354,6 +394,7 @@ def plot_results(
             figure, axis = create_plot()
             axis.invert_xaxis()
             axis.invert_yaxis()
+            scale_units, scale_unit = 1.0, "grid units"
         else:
             print(f"Skipping spatial plot: no coordinates for {name}")
             continue
@@ -366,6 +407,7 @@ def plot_results(
         ))
         axis.autoscale_view()
         axis.set_aspect("equal")
+        add_scale_bar(axis, scale_units, scale_unit)
         finish_plot(figure, axis, f"{name}: annotations", annotation_colors,
                     plot_dir / f"{name}.spatial-annotations.png")
 

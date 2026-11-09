@@ -28,7 +28,7 @@ from utils import spatial_plot_data
 SAMPLE_ORDER = ("p7-rep1", "p35-rep1", "p60-rep1")
 AGE_LABELS = ("P7", "P35", "P60")
 CORTEX_ANNOTATIONS = ("L2/3/4", "L5", "L6")
-PANEL_SIZE = 4
+FIGURE_SIZE = (5, 4)
 SPOT_SIZE_UM = 50.0
 DPI = 300
 COLOR_MAP = LinearSegmentedColormap.from_list(
@@ -37,7 +37,7 @@ COLOR_MAP = LinearSegmentedColormap.from_list(
 
 
 class TissuePanel(NamedTuple):
-    sample: str
+    label: str
     image: np.ndarray
     x: np.ndarray
     y: np.ndarray
@@ -66,8 +66,8 @@ def configure_plots() -> None:
         "font.sans-serif": [
             "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
         ],
-        "axes.titlesize": 7, "axes.labelsize": 7,
-        "xtick.labelsize": 7, "ytick.labelsize": 7,
+        "axes.titlesize": 7, "axes.labelsize": 6,
+        "xtick.labelsize": 5, "ytick.labelsize": 5,
         "legend.fontsize": 5, "axes.titlepad": 3,
     })
 
@@ -141,7 +141,7 @@ def select_cortex(
 
 def prepare_tissue_panels(data: ad.AnnData) -> list[TissuePanel]:
     panels = []
-    for sample in SAMPLE_ORDER:
+    for sample, label in zip(SAMPLE_ORDER, AGE_LABELS, strict=True):
         indices = np.flatnonzero(data.obs["sample"].astype(str).eq(sample))
         if sample not in data.uns["spatial"]:
             raise ValueError(f"Missing tissue library: {sample}")
@@ -153,7 +153,7 @@ def prepare_tissue_panels(data: ad.AnnData) -> list[TissuePanel]:
         if image.ndim not in (2, 3) or min(image.shape[:2]) < 1:
             raise ValueError(f"Invalid tissue image: {sample}")
         panels.append(TissuePanel(
-            sample, image, x, y, SPOT_SIZE_UM / pixel_size, indices,
+            label, image, x, y, SPOT_SIZE_UM / pixel_size, indices,
         ))
     return panels
 
@@ -183,8 +183,11 @@ def plot_distribution(
     axis.set_ylabel("Usage (%)", labelpad=5)
     axis.set_title("Usage across spots")
     axis.spines[["top", "right"]].set_visible(False)
-    axis.legend([boxes["medians"][0], boxes["means"][0]],
-                ["Median", "Mean"], frameon=False, loc="upper right")
+    axis.legend(
+        [boxes["medians"][0], boxes["means"][0]], ["Median", "Mean"],
+        frameon=False, loc="upper center", bbox_to_anchor=(0.5, -0.16),
+        ncol=2, borderaxespad=0, handlelength=1.1, handletextpad=0.4,
+    )
 
 
 def plot_tissue(
@@ -204,7 +207,7 @@ def plot_tissue(
     axis.set_ylim(panel.image.shape[0], 0)
     axis.set_aspect("equal")
     axis.set_anchor("N")
-    axis.set_title(f"{panel.sample} (n={len(panel.indices):,})")
+    axis.set_title(panel.label)
     axis.set_axis_off()
     return patches
 
@@ -213,9 +216,7 @@ def plot_program(
     name: str, values: np.ndarray, panels: list[TissuePanel], output: Path,
     cortex_only: bool = False,
 ) -> None:
-    figure, grid = plt.subplots(
-        2, 2, figsize=(2 * PANEL_SIZE, 1.5 * PANEL_SIZE),
-    )
+    figure, grid = plt.subplots(2, 2, figsize=FIGURE_SIZE)
     axes = grid.ravel()
     try:
         plot_distribution(axes[0], values, panels)
@@ -224,21 +225,21 @@ def plot_program(
         for axis, panel in zip(axes[1:], panels, strict=True):
             patches = plot_tissue(axis, panel, values, normalization)
         figure.subplots_adjust(
-            left=0.075, right=0.89, bottom=0.07, top=0.93,
-            wspace=0.12, hspace=0.16,
+            left=0.12, right=0.85, bottom=0.04, top=0.90,
+            wspace=0.12, hspace=0.40,
         )
-        color_axis = figure.add_axes((0.92, 0.22, 0.024, 0.55))
+        color_axis = figure.add_axes((0.86, 0.18, 0.018, 0.54))
         colorbar = figure.colorbar(
             patches, cax=color_axis, ticks=np.linspace(0, upper, 5),
             format=PercentFormatter(xmax=1, decimals=1),
         )
-        colorbar.set_label("Usage (%)", fontsize=5)
+        colorbar.set_label("Usage (%)", fontsize=6)
         colorbar.ax.tick_params(labelsize=5)
         title = name.replace("program_", "Program ")
         if cortex_only:
             title += " (cortical layers)"
         figure.suptitle(f"{title}: P7 / P35 / P60", fontsize=7, y=0.985)
-        figure.savefig(output, dpi=DPI, bbox_inches="tight", pad_inches=0.02)
+        figure.savefig(output, dpi=DPI, bbox_inches=figure.bbox_inches)
     finally:
         plt.close(figure)
 
