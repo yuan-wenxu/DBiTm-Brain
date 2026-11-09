@@ -32,7 +32,16 @@ FIGURE_SIZE = (5, 4)
 SPOT_SIZE_UM = 50.0
 DPI = 300
 COLOR_MAP = LinearSegmentedColormap.from_list(
-    "usage", ("#4DBBD5", "#FFFFFF", "#E64B35"),
+    "usage",
+    (
+        (0.00, "#4DBBD5"),
+        (0.50, "#FFFFFF"),
+        (0.68, "#FFF0E9"),
+        (0.74, "#FFD7CC"),
+        (0.86, "#EF6A53"),
+        (0.94, "#EB5842"),
+        (1.00, "#E64B35"),
+    ),
 )
 
 

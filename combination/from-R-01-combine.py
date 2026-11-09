@@ -21,6 +21,7 @@ from matplotlib.patches import Patch, Rectangle
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from plot_colors import cluster_color
 from utils import spatial_plot_data, write_anndata
 
 
@@ -28,11 +29,6 @@ BARCODE_PREFIXES = {"P7-M1-S3-mRNA": "P7-M1-S3-mRNA",
                     "P35-M1-S3-mRNA": "P35-M1-S3-mRNA", 
                     "P60-M1-S3-mRNA": "P60-M1-S3-mRNA", 
                     "P60-M3-S2-mRNA": "P60-M3-S2-mRNA"}
-CLUSTER_COLORS = (
-    "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
-    "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
-    "#98DF8A", "#C49C94", "#00A087", "#7E8A97", "#B86B3E",
-)
 CORTICAL_ANNOTATIONS = ("L2/3", "L4", "L5", "L6")
 OUTPUT_NAMES = (
     "mrna-combined.r-annotated.h5ad", "spot_clusters.csv",
@@ -280,14 +276,7 @@ def color_maps(labels: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
     cluster_colors = {}
     annotation_colors = {}
     for cluster, row in labels.iterrows():
-        index = int(cluster)
-        if index < len(CLUSTER_COLORS):
-            color = CLUSTER_COLORS[index]
-        else:
-            # Fixed extension so a cluster's color does not depend on subsets.
-            color = matplotlib.colors.to_hex(
-                plt.get_cmap("tab20")((index - len(CLUSTER_COLORS)) % 20),
-            )
+        color = cluster_color(int(cluster))
         cluster_colors[cluster] = color
         annotation_colors.setdefault(row["annotation"], color)
     return cluster_colors, {

@@ -24,27 +24,10 @@ import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
 from matplotlib.patches import Patch, Rectangle
 
+from plot_colors import cluster_colors
 from utils import spatial_plot_data
 
 
-# Based on scripts/benchmark/saturation.py, with additional purple and yellow
-# tones that remain clear over a grayscale tissue image.
-CLUSTER_COLORS = (
-    "#A73030",
-    "#E64B35",
-    "#2F5597",
-    "#4DBBD5",
-    "#CC79A7",
-    "#7E57C2",
-    "#C5A3E0",
-    "#D6A500",
-    "#FFE082",
-    "#2CA02C",
-    "#264653",
-    "#E7298A",
-    "#98DF8A",
-    "#C49C94",
-)
 VALUE_MASK_LAYER = "value_mask"
 
 
@@ -330,25 +313,7 @@ def run_umap(
     return model.fit_transform(scores)
 
 
-def cluster_colors(cluster_count: int) -> list[tuple[float, float, float, float]]:
-    colors = [
-        matplotlib.colors.to_rgba(color)
-        for color in CLUSTER_COLORS[:cluster_count]
-    ]
-    if cluster_count <= len(colors):
-        return colors
-    palette = plt.get_cmap("turbo")
-    extra_count = cluster_count - len(colors)
-    colors.extend(
-        palette(index / max(1, extra_count - 1))
-        for index in range(extra_count)
-    )
-    return colors
-
-
-def cluster_legend(
-    colors: list[tuple[float, float, float, float]],
-) -> list[Patch]:
+def cluster_legend(colors: list[str]) -> list[Patch]:
     return [
         Patch(facecolor=color, edgecolor="none", label=f"D{index}")
         for index, color in enumerate(colors)
@@ -643,11 +608,7 @@ def main() -> None:
         ordered=True,
     )
     adata.uns["cluster_colors"] = np.asarray(
-        [
-            matplotlib.colors.to_hex(color)
-            for color in cluster_colors(cluster_count)
-        ],
-        dtype=str,
+        cluster_colors(cluster_count), dtype=str,
     )
     adata.obsm["X_pca"] = scores.astype(np.float32)
     adata.obsm["X_umap"] = embedding.astype(np.float32)

@@ -23,6 +23,7 @@ from matplotlib.lines import Line2D
 from matplotlib.patches import Patch, Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from plot_colors import cluster_colors
 from utils import spatial_plot_data, write_anndata
 
 
@@ -30,11 +31,6 @@ BARCODE_PREFIXES = {"p7-rep1": "p7", "p35-rep1": "p35", "p60-rep1": "p60"}
 SAMPLE_COLORS = ("#E64B35", "#4DBBD5", "#7E57C2")
 UMAP_POINT_SIZE = 2.0
 UMAP_POINT_ALPHA = 0.7
-CLUSTER_COLORS = (
-    "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
-    "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
-    "#98DF8A", "#C49C94",
-)
 OUTPUT_NAMES = (
     "mrna-combined.harmony.clustered.h5ad", "spot_clusters.csv",
     "sample_cluster_counts.csv", "highly_variable_genes.csv",
@@ -402,17 +398,6 @@ def find_cluster_markers(
     )
     print(f"Retained {len(markers):,} cluster marker rows", flush=True)
     return markers
-
-
-def cluster_colors(n_clusters: int) -> list[str]:
-    colors = list(CLUSTER_COLORS[:n_clusters])
-    extra = n_clusters - len(colors)
-    if extra > 0:
-        colors.extend(
-            matplotlib.colors.to_hex(plt.get_cmap("turbo")(index / max(1, extra - 1)))
-            for index in range(extra)
-        )
-    return colors
 
 
 def embedding_panel(

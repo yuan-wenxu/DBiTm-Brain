@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import sys
 from pathlib import Path
 
 import h5py
@@ -18,6 +19,9 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Patch, Rectangle
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from plot_colors import CLUSTER_COLORS, cluster_colors
+
 
 LAYER_TYPES = {
     "L2/3": ["L2/3 IT CTX Glut"],
@@ -27,12 +31,8 @@ LAYER_TYPES = {
     "L6b": ["L6b CTX Glut"],
 }
 LAYER_CATEGORIES = [*LAYER_TYPES, "none"]
-LAYER_COLORS = ["#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#F0F0F0"]
+LAYER_COLORS = (*CLUSTER_COLORS[:len(LAYER_TYPES)], "#F0F0F0")
 LABEL_COLUMN = "rctd_cortical_layer"
-CLUSTER_COLORS = [
-    "#7E57C2", "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
-    "#98DF8A", "#C49C94",
-]
 FIGURE_DPI = 300
 
 
@@ -233,13 +233,7 @@ def load_plot_data(
 def plot_colors(table: pd.DataFrame) -> dict[str, str]:
     colors = dict(zip(LAYER_CATEGORIES, LAYER_COLORS, strict=True))
     cluster_count = int(table["cluster"].astype(int).max()) + 1
-    palette = CLUSTER_COLORS.copy()
-    if cluster_count > len(palette):
-        extra_count = cluster_count - len(palette)
-        palette.extend(
-            matplotlib.colors.to_hex(plt.get_cmap("turbo")(i / max(1, extra_count - 1)))
-            for i in range(extra_count)
-        )
+    palette = cluster_colors(cluster_count)
     colors.update({f"Cluster {index}": color for index, color in enumerate(palette)})
     return colors
 

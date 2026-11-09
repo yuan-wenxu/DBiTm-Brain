@@ -20,25 +20,8 @@ from matplotlib.collections import PatchCollection
 from matplotlib.patches import Patch, Rectangle
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
+from plot_colors import cluster_colors
 from utils import spatial_plot_data, write_anndata
-
-
-CLUSTER_COLORS = (
-    "#A73030",
-    "#E64B35",
-    "#2F5597",
-    "#4DBBD5",
-    "#CC79A7",
-    "#7E57C2",
-    "#C5A3E0",
-    "#D6A500",
-    "#FFE082",
-    "#2CA02C",
-    "#264653",
-    "#E7298A",
-    "#98DF8A",
-    "#C49C94",
-)
 
 
 def parse_args() -> argparse.Namespace:
@@ -304,18 +287,6 @@ def build_snn_graph(
         },
     }
     return n_neighbors, n_pcs
-
-
-def cluster_colors(cluster_count: int) -> list[str]:
-    colors = list(CLUSTER_COLORS[:cluster_count])
-    if cluster_count > len(colors):
-        palette = plt.get_cmap("turbo")
-        extra_count = cluster_count - len(colors)
-        colors.extend(
-            matplotlib.colors.to_hex(palette(index / max(1, extra_count - 1)))
-            for index in range(extra_count)
-        )
-    return colors
 
 
 def add_cluster_squares(

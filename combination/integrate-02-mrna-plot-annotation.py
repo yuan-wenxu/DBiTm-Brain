@@ -24,14 +24,10 @@ from matplotlib.colors import LinearSegmentedColormap, Normalize
 from matplotlib.patches import Patch, Rectangle
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
+from plot_colors import cluster_color
 from utils import spatial_plot_data
 
 
-CLUSTER_COLORS = (
-    "#A73030", "#E64B35", "#2F5597", "#4DBBD5", "#CC79A7", "#7E57C2",
-    "#C5A3E0", "#D6A500", "#FFE082", "#2CA02C", "#264653", "#E7298A",
-    "#98DF8A", "#C49C94",
-)
 HIGHLIGHT_COLOR = "#E64B35"
 BACKGROUND_COLOR = "#D0D0D0"
 CLUSTER_KEY = "leiden"
@@ -146,18 +142,10 @@ def read_annotations(path: Path, clusters: pd.Series) -> pd.DataFrame:
 
 
 def annotation_colors(table: pd.DataFrame) -> dict[str, str]:
-    maximum = max(map(int, table["cluster"]))
-    extra = max(0, maximum + 1 - len(CLUSTER_COLORS))
     result = {}
     for row in table.itertuples(index=False):
-        index = int(row.cluster)
-        if index < len(CLUSTER_COLORS):
-            color = CLUSTER_COLORS[index]
-        else:
-            position = (index - len(CLUSTER_COLORS)) / max(1, extra - 1)
-            color = matplotlib.colors.to_hex(plt.get_cmap("turbo")(position))
         # Repeated annotation names share their lowest-cluster-ID color.
-        result.setdefault(row.annotation, color)
+        result.setdefault(row.annotation, cluster_color(int(row.cluster)))
     return result
 
 
