@@ -122,7 +122,7 @@ def write_anndata(adata: ad.AnnData, output: Path) -> None:
         ) as temporary:
             temporary_path = Path(temporary.name)
         print(f"Writing {output} ...", file=sys.stderr, flush=True)
-        adata.write_h5ad(temporary_path)
+        adata.write_h5ad(temporary_path, compression="gzip")
         temporary_path.replace(output)
     finally:
         if temporary_path is not None and temporary_path.exists():
