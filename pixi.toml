@@ -33,6 +33,7 @@ bioconductor-txdbmaker = ">=1.6.2,<2"
 "bioconductor-go.db" = ">=3.22.0,<4"
 harmonypy = ">=2.0.2,<3"
 c-compiler = ">=2.0.0,<3"
+pyarrow = ">=25.0.0,<26"
 
 [feature.analysis.pypi-dependencies]
 cnmf = ">=1.7.1, <2"
