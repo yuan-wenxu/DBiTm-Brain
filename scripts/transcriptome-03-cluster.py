@@ -17,11 +17,25 @@ from sklearn.neighbors import NearestNeighbors
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
+from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch, Rectangle
 from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 
 from plot_colors import cluster_colors
 from utils import spatial_plot_data, write_anndata
+
+
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": [
+        "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+    ],
+    "font.size": 5,
+    "axes.titlesize": 7, "axes.titlepad": 3,
+    "axes.labelsize": 6, "axes.labelpad": 5,
+    "xtick.labelsize": 5, "ytick.labelsize": 5,
+    "legend.fontsize": 5, "legend.title_fontsize": 5,
+})
 
 
 def parse_args() -> argparse.Namespace:
@@ -333,12 +347,13 @@ def add_scale_bar(
         scale_bar_um / pixel_size_um,
         f"{scale_bar_um:g} µm",
         loc="lower left",
-        pad=0.4,
-        borderpad=0.5,
-        sep=3,
+        pad=0.2,
+        borderpad=0.3,
+        sep=2,
         frameon=True,
         size_vertical=max(2, view_height_pixels * 0.003),
         color="white",
+        fontproperties=FontProperties(size=5),
     )
     scale_bar.patch.set_facecolor("black")
     scale_bar.patch.set_alpha(0.6)
@@ -359,12 +374,12 @@ def plot_umap(
     clusters: np.ndarray,
     colors: list[str],
 ) -> None:
-    figure, axis = plt.subplots(figsize=(6, 5))
+    figure, axis = plt.subplots(figsize=(3, 3))
     axis.scatter(
         embedding[:, 0],
         embedding[:, 1],
         c=[colors[cluster] for cluster in clusters],
-        s=13,
+        s=6,
         linewidths=0,
     )
     for cluster in range(len(colors)):
@@ -375,19 +390,22 @@ def plot_umap(
             str(cluster),
             ha="center",
             va="center",
-            fontsize=9,
+            fontsize=5,
             fontweight="bold",
         )
     axis.set(title="Transcriptome Leiden clusters", xlabel="UMAP1", ylabel="UMAP2")
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -404,7 +422,7 @@ def plot_spatial(
 ) -> None:
     spot_size_pixels = spot_size_um / pixel_size_um
     half_size = spot_size_pixels / 2
-    figure, axis = plt.subplots(figsize=(7, 6))
+    figure, axis = plt.subplots(figsize=(3, 3))
     axis.imshow(image, cmap="gray", origin="upper")
     add_cluster_squares(axis, clusters, colors, x, y, spot_size_pixels)
 
@@ -423,18 +441,21 @@ def plot_spatial(
     axis.set_xlim(left, right)
     axis.set_ylim(bottom, top)
     axis.set_aspect("equal")
-    axis.set_title(title, fontsize=12)
+    axis.set_title(title, pad=3)
     add_scale_bar(axis, right - left, bottom - top, pixel_size_um)
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
     axis.set_axis_off()
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -445,23 +466,26 @@ def plot_array_positions(
     rows: np.ndarray,
     columns: np.ndarray,
 ) -> None:
-    figure, axis = plt.subplots(figsize=(6, 5))
+    figure, axis = plt.subplots(figsize=(3, 3))
     add_cluster_squares(axis, clusters, colors, columns, rows, 0.8)
     padding = 0.75
     axis.set_xlim(columns.max() + padding, columns.min() - padding)
     axis.set_ylim(rows.max() + padding, rows.min() - padding)
     axis.set_aspect("equal")
-    axis.set_title("Transcriptome clusters by array position", fontsize=12)
+    axis.set_title("Transcriptome clusters by array position", pad=3)
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
     axis.set_axis_off()
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 

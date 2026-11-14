@@ -22,10 +22,24 @@ from mpl_toolkits.axes_grid1.anchored_artists import AnchoredSizeBar
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 from matplotlib.collections import PatchCollection
+from matplotlib.font_manager import FontProperties
 from matplotlib.patches import Patch, Rectangle
 
 from plot_colors import cluster_colors
 from utils import spatial_plot_data
+
+
+plt.rcParams.update({
+    "font.family": "sans-serif",
+    "font.sans-serif": [
+        "Arial", "Helvetica", "Liberation Sans", "DejaVu Sans",
+    ],
+    "font.size": 5,
+    "axes.titlesize": 7, "axes.titlepad": 3,
+    "axes.labelsize": 6, "axes.labelpad": 5,
+    "xtick.labelsize": 5, "ytick.labelsize": 5,
+    "legend.fontsize": 5, "legend.title_fontsize": 5,
+})
 
 
 VALUE_MASK_LAYER = "value_mask"
@@ -364,12 +378,13 @@ def add_scale_bar(
         scale_bar_um / pixel_size_um,
         f"{scale_bar_um:g} µm",
         loc="lower left",
-        pad=0.4,
-        borderpad=0.5,
-        sep=3,
+        pad=0.2,
+        borderpad=0.3,
+        sep=2,
         frameon=True,
         size_vertical=max(2, view_height_pixels * 0.003),
         color="white",
+        fontproperties=FontProperties(size=5),
     )
     scale_bar.patch.set_facecolor("black")
     scale_bar.patch.set_alpha(0.6)
@@ -384,9 +399,9 @@ def plot_umap(
 ) -> None:
     colors = cluster_colors(int(clusters.max()) + 1)
     color_values = [colors[item] for item in clusters]
-    figure, axis = plt.subplots(figsize=(6, 5))
+    figure, axis = plt.subplots(figsize=(3, 3))
     axis.scatter(
-        embedding[:, 0], embedding[:, 1], c=color_values, s=13, linewidths=0
+        embedding[:, 0], embedding[:, 1], c=color_values, s=6, linewidths=0
     )
     for cluster in range(len(colors)):
         points = embedding[clusters == cluster]
@@ -396,21 +411,24 @@ def plot_umap(
             f"D{cluster}",
             ha="center",
             va="center",
-            fontsize=9,
+            fontsize=5,
             fontweight="bold",
         )
-    axis.set_title("UMAP of VMR residuals", fontsize=12)
-    axis.set_xlabel("UMAP1", fontsize=10)
-    axis.set_ylabel("UMAP2", fontsize=10)
+    axis.set_title("UMAP of VMR residuals", pad=3)
+    axis.set_xlabel("UMAP1")
+    axis.set_ylabel("UMAP2", labelpad=5)
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -424,7 +442,7 @@ def plot_spatial(
     spot_size_um: float,
 ) -> None:
     colors = cluster_colors(int(clusters.max()) + 1)
-    figure, axis = plt.subplots(figsize=(7, 6))
+    figure, axis = plt.subplots(figsize=(3, 3))
     axis.imshow(image, cmap="gray", origin="upper")
 
     spot_size_pixels = spot_size_um / hires_pixel_size_um
@@ -432,19 +450,22 @@ def plot_spatial(
     axis.set_xlim(0, image.shape[1])
     axis.set_ylim(image.shape[0], 0)
     axis.set_aspect("equal")
-    axis.set_title("Leiden clusters on tissue image", fontsize=12)
+    axis.set_title("Leiden clusters on tissue image", pad=3)
     add_scale_bar(axis, image.shape[1], image.shape[0], hires_pixel_size_um)
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
     axis.set_axis_off()
 
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -467,13 +488,13 @@ def plot_spatial_cropped(
     top = max(0.0, float(y.min()) - half_size - margin_pixels)
     bottom = min(float(image.shape[0]), float(y.max()) + half_size + margin_pixels)
 
-    figure, axis = plt.subplots(figsize=(7, 6))
+    figure, axis = plt.subplots(figsize=(3, 3))
     axis.imshow(image, cmap="gray", origin="upper")
     add_cluster_squares(axis, clusters, x, y, spot_size_pixels)
     axis.set_xlim(left, right)
     axis.set_ylim(bottom, top)
     axis.set_aspect("equal")
-    axis.set_title("Leiden clusters on cropped tissue image", fontsize=12)
+    axis.set_title("Leiden clusters on cropped tissue image", pad=3)
     add_scale_bar(
         axis,
         right - left,
@@ -483,13 +504,16 @@ def plot_spatial_cropped(
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
     axis.set_axis_off()
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -500,23 +524,26 @@ def plot_spot_positions(
     array_columns: np.ndarray,
 ) -> None:
     colors = cluster_colors(int(clusters.max()) + 1)
-    figure, axis = plt.subplots(figsize=(6, 5))
+    figure, axis = plt.subplots(figsize=(3, 3))
     add_cluster_squares(axis, clusters, array_columns, array_rows, 0.8)
     padding = 0.75
     axis.set_xlim(array_columns.max() + padding, array_columns.min() - padding)
     axis.set_ylim(array_rows.max() + padding, array_rows.min() - padding)
     axis.set_aspect("equal")
-    axis.set_title("Leiden clusters by array position", fontsize=12)
+    axis.set_title("Leiden clusters by array position", pad=3)
     axis.legend(
         handles=cluster_legend(colors),
         title="Cluster",
-        bbox_to_anchor=(1.02, 1),
+        bbox_to_anchor=(1.01, 1),
         loc="upper left",
         frameon=False,
+        ncol=max(1, (len(colors) + 9) // 10),
+        borderaxespad=0, labelspacing=0.25,
+        handlelength=1, handletextpad=0.4, columnspacing=0.7,
     )
     axis.set_axis_off()
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
@@ -528,20 +555,22 @@ def plot_imputation_history(
     iterations = [row[0] for row in history]
     mse = [row[1] for row in history]
     relative_mse = [row[2] for row in history]
-    figure, axes = plt.subplots(1, 2, figsize=(10, 4))
-    axes[0].plot(iterations, mse, marker="o", color="#4DBBD5")
-    axes[0].set_xlabel("Iteration", fontsize=10)
-    axes[0].set_ylabel("MSE", fontsize=10)
-    axes[0].set_title("Iterative-PCA imputation", fontsize=12)
-    axes[1].plot(iterations, relative_mse, marker="o", color="#4DBBD5")
-    axes[1].axhline(min_gain, color="#E64B35", linestyle="--", linewidth=1)
-    axes[1].set_xlabel("Iteration", fontsize=10)
-    axes[1].set_ylabel("MSE / maximum MSE", fontsize=10)
-    axes[1].set_title("Relative convergence", fontsize=12)
+    figure, axes = plt.subplots(1, 2, figsize=(4, 2))
+    axes[0].plot(iterations, mse, marker="o", markersize=2,
+                 linewidth=0.8, color="#4DBBD5")
+    axes[0].set_xlabel("Iteration")
+    axes[0].set_ylabel("MSE", labelpad=5)
+    axes[0].set_title("Iterative-PCA imputation", pad=3)
+    axes[1].plot(iterations, relative_mse, marker="o", markersize=2,
+                 linewidth=0.8, color="#4DBBD5")
+    axes[1].axhline(min_gain, color="#E64B35", linestyle="--", linewidth=0.6)
+    axes[1].set_xlabel("Iteration")
+    axes[1].set_ylabel("MSE / maximum MSE", labelpad=5)
+    axes[1].set_title("Relative convergence", pad=3)
     for axis in axes:
         axis.grid(alpha=0.2)
-    figure.tight_layout()
-    figure.savefig(path, dpi=300, bbox_inches="tight")
+    figure.tight_layout(pad=0.3)
+    figure.savefig(path, dpi=300, bbox_inches="tight", pad_inches=0.02)
     plt.close(figure)
 
 
