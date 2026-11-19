@@ -39,6 +39,7 @@ pyarrow = ">=25.0.0,<26"
 cnmf = ">=1.7.1, <2"
 spalrfactor = { git = "https://github.com/yuan-wenxu/SpaLRFactor" }
 covtools = { git = "https://github.com/yuan-wenxu/CovTools.git" }
+magic-impute = ">=3.0.0, <4"
 
 [feature.rctd]
 platforms = ["linux-64-cuda-12-9"]

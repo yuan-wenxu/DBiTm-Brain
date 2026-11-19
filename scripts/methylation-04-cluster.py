@@ -68,10 +68,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-gain",
         type=float,
-        default=0.01,
+        default=0.001,
         help=(
             "Stop when imputation MSE divided by the largest observed MSE is "
-            "below this value (default: 0.01)."
+            "below this value (default: %(default)s)."
         ),
     )
     parser.add_argument(

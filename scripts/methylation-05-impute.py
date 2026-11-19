@@ -54,8 +54,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--min-gain",
         type=float,
-        default=0.01,
-        help="Stop when update MSE / largest update MSE is below this value (default: 0.01).",
+        default=0.001,
+        help=(
+            "Stop when update MSE / largest update MSE is below this value "
+            "(default: %(default)s)."
+        ),
     )
     parser.add_argument(
         "--random-seed",
