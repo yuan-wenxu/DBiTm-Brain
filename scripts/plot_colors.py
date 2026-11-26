@@ -5,9 +5,11 @@ from matplotlib.colors import to_hex
 
 
 CLUSTER_COLORS = (
-    "#A73030", "#E64B35", "#4DBBD5", "#CC79A7", "#7E57C2",
-    "#C5A3E0", "#D6A500", "#FFE082", "#F28E2B", "#FF80B5",
-    "#E7298A", "#9BC9FF", "#C49C94",
+    "#A73030", "#E64B35", "#4DBBD5", "#BC8A34", "#F38C47",
+    "#91A0E6", "#1696E9", "#FFAF69", "#F4AAA4", "#E489D2",
+    "#F0BE38", "#C67F5A", "#BEBEFF", "#ED719A", "#9184F5",
+    "#76CAF4", "#A57DCD", "#6A98BE", "#C18DF2", "#CE65C5",
+    "#CB7A8B", "#E1A0D2", "#BE8CA5", "#F0918C", "#C9A568",
 )
 
 

@@ -29,7 +29,6 @@ BARCODE_PREFIXES = {"P7-M1-S3-mRNA": "P7-M1-S3-mRNA",
                     "P35-M1-S3-mRNA": "P35-M1-S3-mRNA", 
                     "P60-M1-S3-mRNA": "P60-M1-S3-mRNA", 
                     "P60-M3-S2-mRNA": "P60-M3-S2-mRNA"}
-CORTICAL_ANNOTATIONS = ("L2/3", "L4", "L5", "L6")
 OUTPUT_NAMES = (
     "mrna-combined.r-annotated.h5ad", "spot_clusters.csv",
     "cluster_annotation.csv", "sample_cluster_counts.csv", "plots",
@@ -52,7 +51,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--r-results-dir", type=Path, required=True,
-        help="Folder containing the three R-exported CSV files.",
+        help="Folder containing the R exports, including optional PCA scores.",
     )
     parser.add_argument("--output-dir", type=Path, required=True)
     parser.add_argument(
@@ -126,7 +125,7 @@ def require_same_spots(
 
 def read_r_results(
     directory: Path,
-) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame | None]:
     metadata = read_csv(
         directory / "spot-metadata.csv",
         {"spot_id", "sample", "seurat_clusters"}, "spot_id",
@@ -152,7 +151,22 @@ def read_r_results(
     umap = umap.loc[metadata.index, ["UMAP_1", "UMAP_2"]].astype(float)
     if not np.isfinite(umap.to_numpy()).all():
         raise ValueError("R UMAP coordinates must be finite")
-    return metadata, umap, labels
+
+    pca = None
+    pca_path = directory / "pca-coordinates.csv"
+    if pca_path.exists():
+        table = read_csv(pca_path, {"spot_id"}, "spot_id")
+        require_same_spots(metadata.index, table.index, "R metadata vs PCA")
+        columns = sorted(
+            (col for col in table if re.fullmatch(r"PC_[1-9][0-9]*", col)),
+            key=lambda column: int(column.split("_", 1)[1]),
+        )
+        if not columns:
+            raise ValueError(f"{pca_path}: no PCA columns (expected PC_1, PC_2)")
+        pca = table.loc[metadata.index, columns].astype(float)
+        if not np.isfinite(pca.to_numpy()).all():
+            raise ValueError(f"{pca_path}: PCA coordinates must be finite")
+    return metadata, umap, labels, pca
 
 
 def combine_samples(args: argparse.Namespace) -> ad.AnnData:
@@ -244,13 +258,6 @@ def combine_samples(args: argparse.Namespace) -> ad.AnnData:
     return combined
 
 
-def annotation_order(labels: pd.DataFrame) -> list[str]:
-    annotations = list(pd.unique(labels["annotation"]))
-    return [label for label in CORTICAL_ANNOTATIONS if label in annotations] + [
-        label for label in annotations if label not in CORTICAL_ANNOTATIONS
-    ]
-
-
 def attach_r_results(
     data: ad.AnnData, metadata: pd.DataFrame, umap: pd.DataFrame,
     labels: pd.DataFrame,
@@ -267,7 +274,7 @@ def attach_r_results(
     )
     annotations = metadata["seurat_clusters"].map(labels["annotation"])
     data.obs["annotation"] = pd.Categorical(
-        annotations, categories=annotation_order(labels),
+        annotations, categories=labels["annotation"].unique(),
     )
     data.obsm["X_umap"] = umap.loc[data.obs_names].to_numpy(dtype=float)
 
@@ -279,9 +286,7 @@ def color_maps(labels: pd.DataFrame) -> tuple[dict[str, str], dict[str, str]]:
         color = cluster_color(int(cluster))
         cluster_colors[cluster] = color
         annotation_colors.setdefault(row["annotation"], color)
-    return cluster_colors, {
-        label: annotation_colors[label] for label in annotation_order(labels)
-    }
+    return cluster_colors, annotation_colors
 
 
 def add_scale_bar(
@@ -408,9 +413,14 @@ def main() -> None:
         for name in OUTPUT_NAMES:
             if (output / name).exists():
                 raise ValueError(f"Output already exists: {output / name}")
-        metadata, umap, labels = read_r_results(args.r_results_dir.expanduser())
+        metadata, umap, labels, pca = read_r_results(
+            args.r_results_dir.expanduser(),
+        )
         data = combine_samples(args)
         attach_r_results(data, metadata, umap, labels)
+        if pca is not None:
+            data.obsm["X_pca"] = pca.loc[data.obs_names].to_numpy()
+            print(f"Imported {pca.shape[1]} R PCs into obsm['X_pca']")
         output.mkdir(parents=True, exist_ok=True)
         plot_results(data, labels, output, args.spot_size_um)
         write_anndata(data, output / OUTPUT_NAMES[0])
