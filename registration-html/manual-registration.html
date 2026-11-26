@@ -25,7 +25,7 @@ THE SOFTWARE.
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>SpatialAlign · ssDNA Image Registration</title>
+<title>SpatialAlign · Image Registration</title>
 <style>
 :root {
   color-scheme: light;
@@ -46,6 +46,7 @@ main { width:min(1540px,calc(100% - 32px)); margin:20px auto 42px; }
 .card { overflow:hidden; background:var(--paper); border:1px solid var(--line); border-radius:10px; box-shadow:0 2px 10px rgba(30,50,80,.04); }
 .toolbar { min-height:62px; padding:10px 14px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
 .tool-group { display:flex; align-items:center; gap:8px; }
+.tool-group[hidden] { display:none; }
 .tool-group label { color:var(--muted); font-size:12px; font-weight:700; }
 .toolbar-actions { margin-left:auto; display:flex; gap:8px; flex-wrap:wrap; }
 select { height:34px; padding:0 28px 0 10px; color:#314057; background:#fff; border:1px solid #d7dfe8; border-radius:6px; }
@@ -101,18 +102,18 @@ dialog li { margin:8px 0; }
 <body>
 <header class="app-header">
   <div>
-    <p class="eyebrow">ssDNA IMAGE REGISTRATION</p>
+    <p id="registration-kind" class="eyebrow">IMAGE REGISTRATION</p>
     <h1>SpatialAlign</h1>
-    <p class="subtitle">Align resized full-field ssDNA images with a fixed TAPS-beta reference</p>
+    <p id="reference-description" class="subtitle"></p>
   </div>
   <button id="help-button" class="button button-ghost" aria-label="Show instructions">?</button>
 </header>
 
 <main>
   <section class="toolbar card">
-    <div class="tool-group">
+    <div id="active-layer-control" class="tool-group" hidden>
       <label for="active-layer">Active moving layer</label>
-      <select id="active-layer"><option value="mrna">mRNA</option><option value="taps">TAPS</option></select>
+      <select id="active-layer"></select>
     </div>
     <div class="toolbar-actions">
       <button id="reset-all" class="button button-secondary">Reset Alignment</button>
@@ -124,7 +125,7 @@ dialog li { margin:8px 0; }
 
   <section class="lower-grid">
     <article class="result-card card">
-      <div class="card-heading"><div><h2 id="overlay-title">mRNA + TAPS-beta</h2><span class="badge fixed">TAPS-BETA SPACE</span></div><span class="image-info">Hold Space and drag to pan</span></div>
+      <div class="card-heading"><div><h2 id="overlay-title"></h2><span id="reference-space" class="badge fixed"></span></div><span class="image-info">Hold Space and drag to pan</span></div>
       <div class="result-canvas-wrap">
         <canvas id="result-canvas" aria-label="Registration overlay"></canvas>
         <div id="hud"></div>
@@ -143,10 +144,9 @@ dialog li { margin:8px 0; }
   <p class="eyebrow">QUICK GUIDE</p>
   <h2>Manual alignment</h2>
   <ol>
-    <li>Select mRNA or TAPS as the active layer.</li>
-    <li>The inactive moving modality is hidden automatically.</li>
+    <li id="choose-layer-help" hidden>Select the moving layer to align.</li>
     <li>Use the row/column controls, arrow keys, or drag the overlay to translate the moving image.</li>
-    <li>Drag the overlay for free translation. Hold Space while dragging to pan the view.</li>
+    <li>Hold Space while dragging to pan the view.</li>
     <li>Adjust rotation and opacity as needed.</li>
     <li>Export row/column full-resolution-pixel offsets and rotation as JSON.</li>
   </ol>
@@ -155,18 +155,24 @@ dialog li { margin:8px 0; }
 <script>
 "use strict";
 window.REGISTRATION_DATA = null;
-const layers = window.REGISTRATION_DATA;
-if(!Array.isArray(layers)||layers.length!==3)throw new Error("Missing registration images");
+const {layers, referenceId} = window.REGISTRATION_DATA ?? {};
+if(!Array.isArray(layers)||layers.length<2){
+  throw new Error("Missing registration images");
+}
 
-const reference=layers.find((layer)=>layer.id==="taps_beta");
-const movingLayers=layers.filter((layer)=>layer!==reference);
+const reference = layers.find((layer) => layer.id === referenceId);
+if(!reference)throw new Error("Missing registration reference image");
+const movingLayers = layers.filter((layer) => layer !== reference);
+const singlePair = movingLayers.length === 1;
 const canvas = document.getElementById("result-canvas");
 const canvasWrap = canvas.parentElement;
 const hud = document.getElementById("hud");
 const activeSelect = document.getElementById("active-layer");
-const storageKey = "dbitm-raw-ssdna-spatialalign";
+const storageKey = singlePair
+  ? `dbitm-spatialalign-v2:${window.location.pathname}`
+  : "dbitm-raw-ssdna-spatialalign";
 const viewState = {zoom:1,panX:0,panY:0};
-let activeId = "mrna";
+let activeId = movingLayers[0].id;
 let drag = null;
 let spaceDown = false;
 
@@ -177,6 +183,27 @@ for(const layer of layers){
   layer.imageObject.onload=draw;
   layer.imageObject.src=layer.image;
 }
+if(singlePair){
+  document.getElementById("reference-description").textContent =
+    `Align ${movingLayers[0].label} to the fixed ${reference.label} reference`;
+}else{
+  document.title = "SpatialAlign · ssDNA Image Registration";
+  document.getElementById("registration-kind").textContent =
+    "ssDNA IMAGE REGISTRATION";
+  document.getElementById("reference-description").textContent =
+    `Align full-field ssDNA images to the fixed ${reference.label} reference`;
+  document.getElementById("active-layer-control").hidden = false;
+  document.getElementById("choose-layer-help").hidden = false;
+  for(const layer of movingLayers){
+    const option = document.createElement("option");
+    option.value = layer.id;
+    option.textContent = layer.label;
+    activeSelect.appendChild(option);
+  }
+  activeSelect.value = activeId;
+}
+document.getElementById("reference-space").textContent =
+  `${reference.label.toUpperCase()} SPACE`;
 restore();
 updateActiveView();
 buildControls();
@@ -231,13 +258,28 @@ function buildControls(){
   for(const layer of [active,reference]){
     const fixed=layer===reference,section=document.createElement("section");section.className="layer";
     const transforms=fixed?numericControl("Opacity","opacity",0,1,.01,layer.state.opacity):numericControl("Row offset (full-res px)","rowOffset",-5000,5000,1,layer.state.rowOffset)+numericControl("Col offset (full-res px)","colOffset",-5000,5000,1,layer.state.colOffset)+numericControl("Rotation (deg)","rotation",-180,180,.1,layer.state.rotation)+numericControl("Opacity","opacity",0,1,.01,layer.state.opacity);
-    section.innerHTML=`<div class="layer-head"><span class="dot ${layer.id==="mrna"?"mrna-dot":layer.id==="taps"?"taps-dot":"beta-dot"}"></span><strong>${layer.label} ssDNA${fixed?" (fixed)":""}</strong></div><div class="grid">${transforms}</div>${fixed?"":'<button class="reset-layer" data-reset>Reset current alignment</button>'}`;
+    const colorClass = fixed ? "beta-dot" : (
+      layer.id === "mrna" ? "mrna-dot" : "taps-dot"
+    );
+    const label = layer.label + (singlePair ? "" : " ssDNA");
+    section.innerHTML = `
+      <div class="layer-head">
+        <span class="dot ${colorClass}"></span>
+        <strong>${label}${fixed ? " (fixed)" : ""}</strong>
+      </div>
+      <div class="grid">${transforms}</div>
+      ${fixed ? "" : '<button class="reset-layer" data-reset>Reset current alignment</button>'}`;
     section.querySelectorAll("[data-key]").forEach((input)=>input.addEventListener("input",()=>{const key=input.dataset.key;layer.state[key]=Number(input.value);const number=section.querySelector(`[data-value="${key}"]`);if(number&&input.type==="range")number.value=input.value;const range=section.querySelector(`input[type="range"][data-key="${key}"]`);if(range&&input.type==="number")range.value=input.value;persist();draw();}));
     section.querySelector("[data-reset]")?.addEventListener("click",()=>{layer.state=initialState(layer);persist();buildControls();draw();});root.appendChild(section);
   }
 }
 
-function persist(){localStorage.setItem(storageKey,JSON.stringify(Object.fromEntries(movingLayers.map((layer)=>[layer.id,layer.state]))));}
+function persist(){
+  try{
+    const states = movingLayers.map((layer) => [layer.id, layer.state]);
+    localStorage.setItem(storageKey, JSON.stringify(Object.fromEntries(states)));
+  }catch(error){console.warn(error);}
+}
 function restore(){try{const saved=JSON.parse(localStorage.getItem(storageKey));if(saved)movingLayers.forEach((layer)=>{if(saved[layer.id])layer.state={...initialState(layer),...saved[layer.id]};});}catch(error){console.warn(error);}}
 function setZoom(value,anchor){
   const oldView=getView(canvasWrap.clientWidth,canvasWrap.clientHeight),point=anchor||{x:canvasWrap.clientWidth/2,y:canvasWrap.clientHeight/2};
@@ -261,7 +303,12 @@ activeSelect.addEventListener("change",()=>{activeId=activeSelect.value;updateAc
 document.getElementById("zoom-in").addEventListener("click",()=>setZoom(viewState.zoom*1.25));
 document.getElementById("zoom-out").addEventListener("click",()=>setZoom(viewState.zoom*.8));
 document.getElementById("fit-view").addEventListener("click",fitView);
-document.getElementById("reset-all").addEventListener("click",()=>{layers.forEach((layer)=>{layer.state=initialState(layer);});localStorage.removeItem(storageKey);fitView();buildControls();});
+document.getElementById("reset-all").addEventListener("click",()=>{
+  layers.forEach((layer) => {layer.state = initialState(layer);});
+  try{localStorage.removeItem(storageKey);}catch(error){console.warn(error);}
+  fitView();
+  buildControls();
+});
 function download(name,content,type){const link=document.createElement("a");link.href=URL.createObjectURL(new Blob([content],{type}));link.download=name;link.click();setTimeout(()=>URL.revokeObjectURL(link.href),1000);}
 function activeOffsets(){const layer=movingLayers.find((item)=>item.id===activeId);return{[`${layer.id}_to_${reference.id}`]:{row_offset_fullres_pixels:layer.state.rowOffset,col_offset_fullres_pixels:layer.state.colOffset,rotation_degrees:layer.state.rotation}};}
 document.getElementById("save-json").addEventListener("click",()=>{const pairName=`${activeId}-to-${reference.id.replace("_","-")}`;download(`${pairName}-fullres-row-col-offsets-and-rotation.json`,JSON.stringify(activeOffsets(),null,2),"application/json");});
